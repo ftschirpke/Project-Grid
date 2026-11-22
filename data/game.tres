@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="GameConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/core/game_config.gd" id="1"]
+[ext_resource type="Resource" path="res://data/rules.tres" id="2"]
+[ext_resource type="Resource" path="res://data/player.tres" id="3"]
+
+[resource]
+script = ExtResource("1")
+rules = ExtResource("2")
+player = ExtResource("3")
+room_file = "res://data/rooms/room_01.txt"
+tiles_dir = "res://data/tiles"
+enemies_dir = "res://data/enemies"
+default_tile_symbol = "."
+player_symbol = "P"
+random_seed = 0

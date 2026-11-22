@@ -1,0 +1,68 @@
+[gd_resource type="Resource" script_class="GameRules" load_steps=24 format=3]
+
+[ext_resource type="Script" path="res://src/core/game_rules.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/phases/step_phase.gd" id="2"]
+[ext_resource type="Script" path="res://src/core/phases/player_move_phase.gd" id="3"]
+[ext_resource type="Script" path="res://src/core/phases/trigger_abilities_phase.gd" id="4"]
+[ext_resource type="Script" path="res://src/core/phases/remove_dead_phase.gd" id="5"]
+[ext_resource type="Script" path="res://src/core/phases/win_check_phase.gd" id="6"]
+[ext_resource type="Script" path="res://src/core/phases/enemy_action_phase.gd" id="7"]
+[ext_resource type="Script" path="res://src/core/phases/projectile_phase.gd" id="8"]
+[ext_resource type="Script" path="res://src/core/phases/tile_end_step_phase.gd" id="9"]
+[ext_resource type="Script" path="res://src/core/phases/lose_check_phase.gd" id="10"]
+[ext_resource type="Script" path="res://src/core/phases/vision_phase.gd" id="11"]
+[ext_resource type="Script" path="res://src/core/phases/activation_phase.gd" id="12"]
+
+[sub_resource type="Resource" id="p01_player_move"]
+script = ExtResource("3")
+
+[sub_resource type="Resource" id="p02_trigger_abilities"]
+script = ExtResource("4")
+
+[sub_resource type="Resource" id="p03_remove_dead"]
+script = ExtResource("5")
+
+[sub_resource type="Resource" id="p04_win_check"]
+script = ExtResource("6")
+
+[sub_resource type="Resource" id="p05_enemy_actions"]
+script = ExtResource("7")
+
+[sub_resource type="Resource" id="p06_projectiles"]
+script = ExtResource("8")
+
+[sub_resource type="Resource" id="p07_tile_end_step"]
+script = ExtResource("9")
+
+[sub_resource type="Resource" id="p08_remove_dead"]
+script = ExtResource("5")
+
+[sub_resource type="Resource" id="p09_win_check"]
+script = ExtResource("6")
+
+[sub_resource type="Resource" id="p10_lose_check"]
+script = ExtResource("10")
+
+[sub_resource type="Resource" id="p11_vision"]
+script = ExtResource("11")
+
+[sub_resource type="Resource" id="p12_activation"]
+script = ExtResource("12")
+
+[resource]
+script = ExtResource("1")
+boxed_in = 0
+move_into_enemy = 0
+self_damage = false
+walls_block_effects = false
+abilities_destroy_projectiles = false
+terrain_affects_player = true
+terrain_affects_enemies = true
+fog_enabled = true
+remember_seen_tiles = true
+distance_metric = 0
+activation_requires_sight = true
+damage_activates_enemies = true
+win_on_exit = true
+win_on_all_enemies_dead = true
+phases = Array[ExtResource("2")]([SubResource("p01_player_move"), SubResource("p02_trigger_abilities"), SubResource("p03_remove_dead"), SubResource("p04_win_check"), SubResource("p05_enemy_actions"), SubResource("p06_projectiles"), SubResource("p07_tile_end_step"), SubResource("p08_remove_dead"), SubResource("p09_win_check"), SubResource("p10_lose_check"), SubResource("p11_vision"), SubResource("p12_activation")])

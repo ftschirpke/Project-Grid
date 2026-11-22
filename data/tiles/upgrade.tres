@@ -1,0 +1,51 @@
+[gd_resource type="Resource" script_class="TileDef" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://src/core/tiles/tile_def.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/tiles/tile_effect.gd" id="2"]
+[ext_resource type="Script" path="res://src/core/tiles/effects/tile_pickup_effect.gd" id="3"]
+[ext_resource type="Script" path="res://src/core/choices/choice_option.gd" id="4"]
+[ext_resource type="Script" path="res://src/core/choices/upgrade_ability_option.gd" id="5"]
+
+[sub_resource type="Resource" id="l_strike_damage"]
+script = ExtResource("5")
+label = "L-Strike: +1 damage"
+description = "L-Strike deals 1 more damage."
+ability_id = &"l_strike"
+effect_kind = &"damage"
+property = &"amount"
+delta = 1
+
+[sub_resource type="Resource" id="l_strike_stun"]
+script = ExtResource("5")
+label = "L-Strike: +1 turn stun"
+description = "L-Strike stuns for 1 more turn."
+ability_id = &"l_strike"
+effect_kind = &"stun"
+property = &"turns"
+delta = 1
+
+[sub_resource type="Resource" id="loop_damage"]
+script = ExtResource("5")
+label = "Loop: +4 damage"
+description = "Loop deals 4 more damage."
+ability_id = &"loop"
+effect_kind = &"damage"
+property = &"amount"
+delta = 4
+
+[sub_resource type="Resource" id="pickup"]
+script = ExtResource("3")
+title = "Upgrade an ability"
+options = Array[ExtResource("4")]([SubResource("l_strike_damage"), SubResource("l_strike_stun"), SubResource("loop_damage")])
+offer_count = 3
+shuffle = false
+becomes_symbol = "."
+
+[resource]
+script = ExtResource("1")
+id = &"upgrade"
+display_name = "Upgrade"
+symbol = "U"
+color = Color(0.78, 1, 0.6, 1)
+label = "UP"
+on_enter = Array[ExtResource("2")]([SubResource("pickup")])

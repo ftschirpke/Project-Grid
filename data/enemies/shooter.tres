@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="EnemyDef" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_def.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/enemies/behaviors/shoot_behavior.gd" id="2"]
+
+[sub_resource type="Resource" id="behavior"]
+script = ExtResource("2")
+max_range = 8
+fire_interval = 3
+projectile_speed = 1
+projectile_damage = 1
+avoid_hazards = true
+
+[resource]
+script = ExtResource("1")
+id = &"shooter"
+display_name = "Shooter"
+symbol = "s"
+color = Color(0.95, 0.4, 0.55, 1)
+max_health = 2
+activation_range = 5.0
+behavior = SubResource("behavior")

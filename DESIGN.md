@@ -136,14 +136,33 @@ Consequences worth knowing while building and testing:
 Numbers are placeholders taken from the mockup. Offsets are (x, y) relative to the end
 tile, in the canonical orientation, with x to the right and y upward.
 
+**[Decided] after the first playtest:** the mockup areas (an off-centre 2x2 for the L-strike,
+the four diagonals for the loop) were too hard to aim. Areas are now defined relative to
+the player: **stun hits the tiles around the player, damage hits a cone in front**. "In
+front" is the direction of the last move of the pattern. To allow this, each effect of an
+ability can have its own area; an effect without one uses the ability's area.
+
 | Ability | Canonical pattern | Rotatable | Effect | Area (offsets from end tile) |
 |---|---|---|---|---|
-| L-strike | up, right | yes | 1 damage, 1 turn stun | (0,0), (-1,0), (0,1), (-1,1) |
-| Loop | up, right, down, left | yes | 8 damage | (-1,-1), (1,-1), (-1,1), (1,1) |
+| L-strike | up, right (ends facing right) | yes | 1 turn stun | the 8 tiles around the player |
+| | | | 1 damage | cone in front: (1,0), (2,1), (2,0), (2,-1) |
+| Loop | up, left, down, right (counter-clockwise, ends facing right) | yes | 8 damage | cone in front: (1,0), (2,1), (2,0), (2,-1) |
 
-Note on the L-strike area: the mockup draws the player on the **start** tile. The 2x2 area
-therefore contains the end tile, the tile to its left, and the two tiles above those. This
-reading should be confirmed with the designers once it is visible on screen.
+**[Decided] after the first playtest:** the loop runs **counter-clockwise**. Consequences:
+the two starting abilities no longer share moves, so walking a loop does not fire
+L-strikes on the way (clockwise turns are L-strikes, a counter-clockwise square is the
+loop). Counter-clockwise movement is therefore no longer fully "quiet": single
+counter-clockwise turns still fire nothing, but four in a row complete a loop. The
+statements in 6.1 about the loop containing an L-strike describe the original clockwise
+loop; overlap between different abilities still works as specified.
+
+- **[Default]** The cone is one tile directly in front, then three tiles behind it. Its
+  size and the damage numbers are unchanged placeholders.
+- The patterns themselves are unchanged. If they are still too hard to pull off, shorter or
+  different patterns are a data change in `data/abilities`.
+
+The original mockup areas, for reference: L-strike (0,0), (-1,0), (0,1), (-1,1); loop
+(-1,-1), (1,-1), (-1,1), (1,1).
 
 - **[Default]** "1 turn stun" means the enemy skips its next action.
 
@@ -315,7 +334,65 @@ entries above) and we decide after playing.
 9. Content of the upgrade and new-ability choices.
 10. Confirmation of the L-strike area reading (section 6.3).
 
-## 14. Decision log
+## 14. Implementation notes (first prototype)
+
+Written by the developer. Everything here is a [Default] chosen while building, where the
+document left a detail open. All of it is data or a switch unless stated otherwise.
+
+**Where things are**
+
+| To change | Edit |
+|---|---|
+| Rule switches, order of step phases | `data/rules.tres` |
+| Player health, vision radius, starting abilities | `data/player.tres` |
+| Abilities (pattern, rotatable, area, effects) | `data/abilities/*.tres` |
+| Enemy types and their behaviour parameters | `data/enemies/*.tres` |
+| Tile types, hazard damage, slow cost, pickup options | `data/tiles/*.tres` |
+| Room layout | `data/rooms/room_01.txt` (legend in the file) |
+
+A new tile or enemy type is a new file in its folder with its own `symbol`; it is picked up
+automatically and can then be typed into the room file. New effect, behaviour, tile-effect
+or phase kinds are one small script each under `src/core`. Rules live in `src/core` and do
+not touch the scene tree; `src/view` only draws. Rules tests:
+`godot --headless --path . --script res://tests/run_tests.gd`.
+
+**Choices made where the document was silent**
+
+- **Slow terrain** applies when *entering* a slow tile (tile `move_cost = 2`). On the first
+  step the unit stays where it is, on the second it arrives. The tile the player is
+  committed to is reserved, so no enemy can take it meanwhile.
+- **Hazard** also damages a unit that stays on it (boxed in, or wading into slow terrain),
+  since it "ends a step" there. Enemies path around hazards when another route exists.
+- **Mockup gray tiles**: the cross left of the star room is hazard, the tiles leading into
+  the star room are slow.
+- **Activation** is checked at the end of a step, so a newly activated enemy first acts on
+  the following step. It needs range *and* line of sight (switch), and an idle enemy that
+  takes damage activates (switch).
+- **"N tiles"** for vision and activation is a straight-line (Euclidean) radius. Manhattan
+  and Chebyshev are available as a switch.
+- **Stun** does not stack: a new stun replaces a shorter remaining one.
+- **Chaser** attacks only if it is adjacent after the player's move. At equal speed it
+  therefore never hits a player who keeps moving away; it hits when the player moves
+  alongside or toward it, or is cornered.
+- **Shooter**: the projectile appears on the shooter's tile and already advances one tile in
+  the step it is fired. While lined up but reloading, the shooter stands still.
+- **Projectile and sidestep**: a player who steps *into* a projectile's tile from the side
+  is not hit (only entering the player's tile or swapping counts, as written).
+- **Boss**: chases; every 4th action it marks the 3x3 around itself instead of moving, and
+  on its next action deals 2 damage there. A stun delays the slam, it does not cancel it.
+- **Win check runs twice**, after abilities and again after enemies and hazards, both before
+  the lose check, so every simultaneous kill goes to the player.
+- **Moving into an enemy**: besides "invalid" there is a "swap places" variant to try.
+- **Boxed in**: besides "pass the turn" and "lose" there is a "nothing happens" variant.
+- **Pickups**: the choice opens after the step in which the tile is entered has resolved.
+  A newly gained ability can use moves made before it was picked up.
+- **Placeholder content**: upgrade tile offers L-strike +1 damage, L-strike +1 stun, Loop +4
+  damage. Star tile offers Lance (three in a line, 2 damage on the three tiles ahead),
+  Zigzag (up, right, up: 2 damage and stun on the row ahead) and Recoil (up, down: 1 damage
+  and 2 turn stun all around).
+- **Room 01** has six enemies: three chasers, two shooters and the boss below the exit.
+
+## 15. Decision log
 
 | # | Decision | Reasoning |
 |---|---|---|
@@ -335,3 +412,5 @@ entries above) and we decide after playing.
 | 14 | Open points are developer defaults and must be configurable | The design will be tuned by playing the first prototype. |
 | 15 | Modularity is a top requirement | Features will be changed and added repeatedly; each addition should be a new unit, not an edit to the core. |
 | 16 | Art is coloured boxes only | The prototype tests the mechanic; the mockup's look is enough. |
+| 17 | Stun around the player, damage in a cone in front; areas per effect | First playtest: the mockup areas were too hard to aim and control. |
+| 18 | Loop runs counter-clockwise | First playtest; also separates it from the clockwise L-strike. |

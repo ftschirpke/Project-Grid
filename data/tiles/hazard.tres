@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="TileDef" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/core/tiles/tile_def.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/tiles/tile_effect.gd" id="2"]
+[ext_resource type="Script" path="res://src/core/tiles/effects/tile_damage_effect.gd" id="3"]
+
+[sub_resource type="Resource" id="damage"]
+script = ExtResource("3")
+amount = 1
+
+[resource]
+script = ExtResource("1")
+id = &"hazard"
+display_name = "Hazard"
+symbol = "^"
+color = Color(0.9, 0.55, 0.3, 1)
+label = "!"
+enemies_avoid = true
+on_end_step = Array[ExtResource("2")]([SubResource("damage")])

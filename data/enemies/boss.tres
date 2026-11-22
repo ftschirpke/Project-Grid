@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="EnemyDef" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://src/core/enemies/enemy_def.gd" id="1"]
+[ext_resource type="Script" path="res://src/core/enemies/behaviors/boss_behavior.gd" id="2"]
+[ext_resource type="Script" path="res://src/core/enemies/behaviors/chase_behavior.gd" id="3"]
+
+[sub_resource type="Resource" id="chase"]
+script = ExtResource("3")
+damage = 1
+avoid_hazards = true
+
+[sub_resource type="Resource" id="behavior"]
+script = ExtResource("2")
+base = SubResource("chase")
+slam_interval = 4
+slam_radius = 1
+slam_damage = 2
+
+[resource]
+script = ExtResource("1")
+id = &"boss"
+display_name = "Boss"
+symbol = "B"
+color = Color(0.4, 0, 0.35, 1)
+max_health = 24
+activation_range = 5.0
+behavior = SubResource("behavior")
