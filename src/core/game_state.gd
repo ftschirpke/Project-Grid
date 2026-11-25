@@ -41,6 +41,11 @@ var status: Status = Status.PLAYING
 var end_reason := ""
 var exit_reached := false
 var step_count := 0
+## Completed turns, steps already taken in the current turn, and the history
+## index of the current turn's first move.
+var turn_count := 0
+var turn_step := 0
+var turn_start_index := 0
 
 var visible_tiles: Dictionary = {} ## Vector2i -> true, current vision
 var seen_tiles: Dictionary = {} ## Vector2i -> true, ever seen
@@ -159,6 +164,11 @@ func move_player(target: Vector2i) -> void:
 		other.pos = from
 	player.pos = target
 	trail.append(target)
+	# With several moves per turn the player can walk into a projectile between
+	# two projectile phases; running into it is a hit.
+	for p in projectiles.duplicate():
+		if p.pos == target:
+			hit_player_with(p)
 	run_tile_effects(tile_at(target).on_enter, player, target)
 
 
@@ -243,6 +253,13 @@ func effect_tiles(ability: AbilityDef, anchor: Vector2i, rotation: int, effect: 
 	return out
 
 
+## Abilities completed by the last move of `moves`, honouring the turn rule:
+## a pattern no longer than a turn must lie inside the turn starting at
+## history index `turn_start`; longer patterns may reach into earlier turns.
+func ability_matches(moves: Array[int], turn_start: int) -> Array[PatternMatcher.Match]:
+	return PatternMatcher.find_matches(moves, abilities, last_trigger, turn_start, rules.player_moves_per_turn)
+
+
 func find_ability(id: StringName) -> AbilityDef:
 	for a in abilities:
 		if a.id == id:
@@ -262,6 +279,13 @@ func spawn_projectile(pos: Vector2i, dir: int, speed: int, damage: int, source: 
 	projectiles.append(p)
 	emit_event(&"projectile_spawned", {"projectile": p})
 	return p
+
+
+func hit_player_with(p: Projectile) -> void:
+	p.alive = false
+	projectiles.erase(p)
+	emit_event(&"projectile_hit", {"projectile": p, "unit": player})
+	damage_unit(player, p.damage, p.source)
 
 
 func destroy_projectiles_on(tiles_hit: Array[Vector2i]) -> void:

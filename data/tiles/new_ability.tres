@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="TileDef" load_steps=12 format=3]
+[gd_resource type="Resource" script_class="TileDef" load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://src/core/tiles/tile_def.gd" id="1"]
 [ext_resource type="Script" path="res://src/core/tiles/tile_effect.gd" id="2"]
@@ -7,7 +7,6 @@
 [ext_resource type="Script" path="res://src/core/choices/gain_ability_option.gd" id="5"]
 [ext_resource type="Resource" path="res://data/abilities/lance.tres" id="6"]
 [ext_resource type="Resource" path="res://data/abilities/zigzag.tres" id="7"]
-[ext_resource type="Resource" path="res://data/abilities/recoil.tres" id="8"]
 
 [sub_resource type="Resource" id="lance"]
 script = ExtResource("5")
@@ -17,14 +16,10 @@ ability = ExtResource("6")
 script = ExtResource("5")
 ability = ExtResource("7")
 
-[sub_resource type="Resource" id="recoil"]
-script = ExtResource("5")
-ability = ExtResource("8")
-
 [sub_resource type="Resource" id="pickup"]
 script = ExtResource("3")
 title = "Gain a new ability"
-options = Array[ExtResource("4")]([SubResource("lance"), SubResource("zigzag"), SubResource("recoil")])
+options = Array[ExtResource("4")]([SubResource("lance"), SubResource("zigzag")])
 offer_count = 3
 shuffle = false
 becomes_symbol = "."

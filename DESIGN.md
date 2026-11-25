@@ -66,6 +66,11 @@ beyond coloured boxes, sound, menus beyond restart.
 - **[Decided]** An invalid move (into a wall, off the grid) is rejected. No turn passes,
   nothing in the world steps, and the move is not added to the move history.
 - **[Default]** Moving into a tile occupied by an enemy is an invalid move.
+- **[Decided] after the second playtest (2026-11-25):** the player makes **two moves per
+  turn**; enemies, projectiles and hazards act once, after the second move. Abilities are
+  only evaluated at the end of a turn (see 6.1). Rule switch `player_moves_per_turn`; the
+  phases that wait for the turn end are flagged `turn_end_only` in `data/rules.tres`.
+  Walking into a projectile's tile mid-turn is a hit; crossing a hazard mid-turn is not.
 - **[Default]** If the player has no valid move at all (boxed in), a key press passes the
   turn without moving and without adding to the move history. Alternative to try: this
   counts as a loss.
@@ -115,6 +120,10 @@ This is the core of the game and should be the most carefully built system.
     new match is valid only if its first move comes after that index.
   - Resulting behaviour on a continuous clockwise circle: the L-strike fires every second
     step and the loop every fourth step.
+- **[Decided] after the second playtest:** abilities trigger only on the **last move of a
+  turn**. A pattern no longer than a turn must lie inside that turn, so two moves that
+  straddle a turn boundary never combine. Longer patterns (lance, zigzag) may reach back
+  into the previous turn.
 - **[Default]** If several abilities trigger on the same move, they resolve in the order
   they are listed in the player's ability list.
 
@@ -158,6 +167,22 @@ loop; overlap between different abilities still works as specified.
 
 - **[Default]** The cone is one tile directly in front, then three tiles behind it. Its
   size and the damage numbers are unchanged placeholders.
+
+**[Decided] after the second playtest (2026-11-25):** with two moves per turn, the starting
+abilities are replaced. L-strike and loop stay in `data/abilities` but are no longer used.
+Every turn is now one of three things: straight on (spear throw), there and back (spear
+thrust) or round a corner (movement only).
+
+| Ability | Canonical pattern | Rotatable | Effect | Area (offsets from end tile) |
+|---|---|---|---|---|
+| Spear throw | up, up | yes | 1 damage | 3 tiles ahead: (0,1), (0,2), (0,3) |
+| Spear thrust | down, up (step and step back) | yes | 2 damage | 2 tiles ahead: (0,1), (0,2) |
+
+"Ahead" is the direction of the second move, so left then right strikes to the right. The
+spear thrust leaves the player on the starting tile, which makes it the only way to hold
+a position; the "no wait action" principle of section 4 is softened on purpose.
+Pickups follow: the upgrade tile offers +1 damage on either spear attack, and recoil is
+no longer offered by the new-ability tile (its pattern equals the spear thrust).
 - The patterns themselves are unchanged. If they are still too hard to pull off, shorter or
   different patterns are a data change in `data/abilities`.
 
@@ -175,12 +200,12 @@ The original mockup areas, for reference: L-strike (0,0), (-1,0), (0,1), (-1,1);
 | Unit | Health |
 |---|---|
 | Player | 3 |
-| Chaser | 8 |
+| Chaser | 2 (was 8) |
 | Shooter | 2 |
-| Boss | 24 |
+| Boss | 6 (was 24) |
 
-With these numbers a loop kills a chaser in one hit and an L-strike is mainly a stun tool
-against it, while two L-strikes kill a shooter.
+**[Decided] after the second playtest:** chaser 2, boss 6. A spear thrust kills a chaser or
+a shooter, a spear throw needs two hits; the boss takes three thrusts.
 
 ## 8. Enemies
 
@@ -197,6 +222,12 @@ against it, while two L-strikes kill a shooter.
 - **[Default]** Moves one tile per step along the shortest path. If it is adjacent to the
   player (four directions) at the start of its action, it attacks for 1 damage instead of
   moving.
+- **[Decided] after the second playtest:** after its step the chaser also strikes the next
+  tile in the walking direction (1 damage) if the player stands there. It threatens the
+  player from two tiles away, but only in a straight line. Switch `attack_after_move` on
+  the chase behaviour; the boss's chase base does not use it.
+- Note: with two player moves per enemy step, the player outruns chasers and projectiles
+  easily. Projectile speed 2 is the obvious next variant to try.
 
 ### 8.2 Shooter (ranged)
 - **[Decided]** Shoots at the player. A shot creates a **projectile that travels in steps**

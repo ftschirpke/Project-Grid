@@ -69,15 +69,25 @@ func choose(index: int) -> bool:
 
 
 ## What moving in `dir` would do right now:
-## { valid: bool, dir: int, target: Vector2i, hits: [{ ability, tiles }] }
+## { valid: bool, dir: int, target: Vector2i, ends_turn: bool,
+##   hits: [{ ability, tiles }] }
+## Abilities only fire on the last move of a turn, so `hits` is empty on the
+## others.
 func preview(dir: int) -> Dictionary:
 	var target := state.player.pos + Grid.vec(dir)
-	var result := {"valid": state.can_player_enter(target), "dir": dir, "target": target, "hits": []}
+	var result := {"valid": state.can_player_enter(target), "dir": dir, "target": target, "ends_turn": false, "hits": []}
 	if not result.valid:
 		return result
+	var per_turn := _moves_per_turn()
+	var steps_after := state.turn_step + state.move_cost(state.player, target)
+	result.ends_turn = steps_after % per_turn == 0
+	if not result.ends_turn:
+		return result
+	# A move that spills over into a later turn (slow terrain) starts that turn.
+	var turn_start := state.turn_start_index if steps_after <= per_turn else state.history.size()
 	var hypothetical := state.history.duplicate()
 	hypothetical.append(dir)
-	for m in PatternMatcher.find_matches(hypothetical, state.abilities, state.last_trigger):
+	for m in state.ability_matches(hypothetical, turn_start):
 		result.hits.append({
 			"ability": m.ability,
 			"tiles": state.effect_tiles(m.ability, target, m.rotation),
@@ -85,11 +95,24 @@ func preview(dir: int) -> Dictionary:
 	return result
 
 
+## Steps the player takes before the world reacts once.
+func _moves_per_turn() -> int:
+	return maxi(1, config.rules.player_moves_per_turn)
+
+
 func _run_step(ctx: StepContext) -> void:
+	ctx.ends_turn = state.turn_step + 1 >= _moves_per_turn()
 	state.begin_step()
 	for phase in config.rules.phases:
 		if state.status != GameState.Status.PLAYING:
 			break
-		if phase != null:
-			phase.run(state, ctx)
+		if phase == null or (phase.turn_end_only and not ctx.ends_turn):
+			continue
+		phase.run(state, ctx)
+	if ctx.ends_turn:
+		state.turn_count += 1
+		state.turn_step = 0
+		state.turn_start_index = state.history.size()
+	else:
+		state.turn_step += 1
 	state.emit_event(&"step_finished")

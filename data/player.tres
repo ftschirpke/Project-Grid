@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" path="res://src/core/player_config.gd" id="1"]
 [ext_resource type="Script" path="res://src/core/abilities/ability_def.gd" id="2"]
-[ext_resource type="Resource" path="res://data/abilities/l_strike.tres" id="3"]
-[ext_resource type="Resource" path="res://data/abilities/loop.tres" id="4"]
+[ext_resource type="Resource" path="res://data/abilities/spear_throw.tres" id="3"]
+[ext_resource type="Resource" path="res://data/abilities/spear_thrust.tres" id="4"]
 
 [resource]
 script = ExtResource("1")
