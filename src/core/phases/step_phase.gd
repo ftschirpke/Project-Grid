@@ -5,5 +5,9 @@ extends Resource
 ## that list. Phases after a win or loss are skipped.
 
 
+## Run only on the last step of a turn (see GameRules.player_moves_per_turn).
+@export var turn_end_only := false
+
+
 func run(_state: GameState, _ctx: StepContext) -> void:
 	pass

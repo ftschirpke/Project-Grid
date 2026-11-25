@@ -7,5 +7,7 @@ var dir := -1
 var target := GameState.NO_TILE
 ## False on the extra steps spent wading into slow terrain.
 var completes_move := false
+## True on the last step of a turn; `turn_end_only` phases run only then.
+var ends_turn := true
 ## Set by the move phase once the player actually changed tile.
 var moved := false

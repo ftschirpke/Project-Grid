@@ -48,6 +48,19 @@ func make(room: String, overrides: Dictionary = {}) -> Game:
 	return Game.new(cfg, room)
 
 
+## One move per turn and the original L-strike and loop: the engine tests
+## below were written for that setup and still cover the shared mechanics.
+func classic(room: String, overrides: Dictionary = {}) -> Game:
+	var o := overrides.duplicate()
+	o["player_moves_per_turn"] = 1
+	var game := make(room, o)
+	var list: Array[AbilityDef] = []
+	for path in ["res://data/abilities/l_strike.tres", "res://data/abilities/loop.tres"]:
+		list.append((load(path) as AbilityDef).instantiate())
+	game.state.abilities = list
+	return game
+
+
 func moves(game: Game, sequence: String) -> void:
 	for c in sequence:
 		game.try_move("URDL".find(c))
@@ -78,7 +91,7 @@ const NO_KILL_WIN := {"win_on_all_enemies_dead": false}
 # --- pattern system ----------------------------------------------------------
 
 func test_clockwise_circle_fires_lstrike_every_second_move() -> void:
-	var game := make(OPEN_ROOM, NO_KILL_WIN)
+	var game := classic(OPEN_ROOM, NO_KILL_WIN)
 	var fired := record_abilities(game)
 	moves(game, "URDLURDL")
 	for move in [1, 3, 5, 7]:
@@ -88,7 +101,7 @@ func test_clockwise_circle_fires_lstrike_every_second_move() -> void:
 
 
 func test_counter_clockwise_circle_fires_loop_every_fourth_move() -> void:
-	var game := make(OPEN_ROOM, NO_KILL_WIN)
+	var game := classic(OPEN_ROOM, NO_KILL_WIN)
 	var fired := record_abilities(game)
 	moves(game, "ULDRULDR")
 	eq(fired.size(), 2, "only two triggers, no L-strike")
@@ -97,7 +110,7 @@ func test_counter_clockwise_circle_fires_loop_every_fourth_move() -> void:
 
 
 func test_different_abilities_overlap_in_list_order() -> void:
-	var game := make(OPEN_ROOM, NO_KILL_WIN)
+	var game := classic(OPEN_ROOM, NO_KILL_WIN)
 	var turn := AbilityDef.new()
 	turn.id = &"turn"
 	turn.display_name = "Turn"
@@ -109,7 +122,7 @@ func test_different_abilities_overlap_in_list_order() -> void:
 
 
 func test_lstrike_stuns_around_and_damages_in_front() -> void:
-	var game := make(OPEN_ROOM, NO_KILL_WIN)
+	var game := classic(OPEN_ROOM, NO_KILL_WIN)
 	var ability := game.state.find_ability(&"l_strike")
 	var end := Vector2i(2, 2) # after U, R from (1,3); facing right
 	var damage: Array = game.state.effect_tiles(ability, end, 0, ability.effects[0])
@@ -128,7 +141,7 @@ func test_lstrike_stuns_around_and_damages_in_front() -> void:
 
 
 func test_area_rotates_with_pattern() -> void:
-	var game := make(OPEN_ROOM, NO_KILL_WIN)
+	var game := classic(OPEN_ROOM, NO_KILL_WIN)
 	var ability := game.state.find_ability(&"l_strike")
 	# L, U from (1,3) ends on (0,2) facing up: three quarter turns.
 	var damage: Array = game.state.effect_tiles(ability, Vector2i(0, 2), 3, ability.effects[0])
@@ -156,7 +169,7 @@ func test_non_rotatable_ability() -> void:
 
 
 func test_preview_matches_what_happens() -> void:
-	var game := make(OPEN_ROOM, NO_KILL_WIN)
+	var game := classic(OPEN_ROOM, NO_KILL_WIN)
 	moves(game, "U")
 	var p := game.preview(R)
 	eq(p.valid, true, "right is valid")
@@ -166,41 +179,169 @@ func test_preview_matches_what_happens() -> void:
 	eq(game.state.history.size(), 1, "preview does not touch the history")
 
 
+# --- two-move turns and spear attacks ---------------------------------------
+
+const ROW_ROOM := """
+........
+........
+........
+"""
+
+
+func test_enemies_act_once_per_two_moves() -> void:
+	var game := make("P.......\n........\n.......c", NO_KILL_WIN)
+	var chaser := game.state.enemies[0]
+	chaser.active = true
+	moves(game, "R")
+	eq(chaser.pos, Vector2i(7, 2), "first move: the world waits")
+	eq(game.state.turn_step, 1, "one move into the turn")
+	moves(game, "D")
+	check(chaser.pos != Vector2i(7, 2), "second move: enemies act")
+	eq(game.state.turn_count, 1, "one turn completed")
+	eq(game.state.turn_step, 0, "next turn starts")
+
+
+func test_spear_throw_hits_three_tiles_ahead() -> void:
+	var game := make("P...sss", NO_KILL_WIN)
+	for e in game.state.enemies:
+		e.stun = 99
+	var fired := record_abilities(game)
+	moves(game, "RR") # ends on (2,0) facing right
+	eq(fired.get(2), ["Spear Throw"], "two moves in one direction")
+	var hp: Array = game.state.enemies.map(func(e: Unit) -> int: return e.hp)
+	eq(hp, [1, 1, 2], "tiles 1 to 3 ahead take 1 damage, the 4th is untouched")
+
+
+func test_spear_thrust_back_and_forth() -> void:
+	var game := make("..P.c..")
+	game.state.enemies[0].stun = 99
+	var fired := record_abilities(game)
+	moves(game, "LR") # back on (2,0), the second move faces right
+	eq(fired.get(2), ["Spear Thrust"], "step and step back")
+	eq(game.state.enemies.size(), 0, "2 damage two tiles ahead kills a chaser")
+	eq(game.state.status, GameState.Status.WON, "all enemies dead wins")
+
+	var reverse := make("c.P....", NO_KILL_WIN)
+	reverse.state.enemies[0].stun = 99
+	moves(reverse, "RL")
+	eq(reverse.state.enemies.size(), 0, "right then left strikes to the left")
+
+
+func test_spear_attacks_rotate() -> void:
+	var game := make(ROW_ROOM, NO_KILL_WIN)
+	var throw := game.state.find_ability(&"spear_throw")
+	var tiles: Array = game.state.effect_tiles(throw, Vector2i(4, 1), 1)
+	tiles.sort()
+	eq(tiles, [Vector2i(5, 1), Vector2i(6, 1), Vector2i(7, 1)], "throw facing right")
+	var thrust := game.state.find_ability(&"spear_thrust")
+	tiles = game.state.effect_tiles(thrust, Vector2i(4, 1), 2)
+	tiles.sort()
+	eq(tiles, [Vector2i(4, 2)], "thrust facing down, clipped at the room edge")
+
+
+func test_turns_do_not_combine_across_the_boundary() -> void:
+	var game := make(ROW_ROOM, NO_KILL_WIN)
+	game.state.player.pos = Vector2i(0, 1)
+	var fired := record_abilities(game)
+	moves(game, "URRD") # R, R straddles the two turns
+	eq(fired.size(), 0, "no spear throw across turns")
+	moves(game, "LR") # U-turn inside one turn
+	eq(fired.get(6), ["Spear Thrust"], "inside a turn it fires")
+
+
+func test_turning_a_corner_fires_nothing() -> void:
+	var game := make(ROW_ROOM, NO_KILL_WIN)
+	var fired := record_abilities(game)
+	moves(game, "DRUR") # two corners
+	eq(fired.size(), 0, "a corner is pure movement")
+
+
+func test_preview_in_two_move_turns() -> void:
+	var game := make(ROW_ROOM, NO_KILL_WIN)
+	game.state.player.pos = Vector2i(3, 1)
+	var first := game.preview(R)
+	eq(first.ends_turn, false, "first move does not end the turn")
+	eq(first.hits.size(), 0, "so it fires nothing")
+	moves(game, "R")
+	eq(game.preview(R).hits[0].ability.id, &"spear_throw", "same direction: throw")
+	eq(game.preview(L).hits[0].ability.id, &"spear_thrust", "back again: thrust")
+	eq(game.preview(U).hits.size(), 0, "corner: nothing")
+	eq(game.preview(U).ends_turn, true, "but it ends the turn")
+
+
+func test_chaser_steps_then_strikes_ahead() -> void:
+	var game := make("P.c\n...", NO_KILL_WIN)
+	var chaser := game.state.enemies[0]
+	chaser.active = true
+	moves(game, "DU") # thrust points up and misses; player back on (0,0)
+	eq(chaser.pos, Vector2i(1, 0), "chaser stepped once")
+	eq(game.state.player.hp, 2, "and struck the tile ahead: 1 damage")
+	moves(game, "DU")
+	eq(chaser.pos, Vector2i(1, 0), "adjacent: attacks without stepping")
+	eq(game.state.player.hp, 1, "1 damage")
+
+
+func test_chaser_strike_only_in_walking_direction() -> void:
+	var game := make("P..\n...\n..c", NO_KILL_WIN)
+	var chaser := game.state.enemies[0]
+	chaser.active = true
+	game.state.player.pos = Vector2i(1, 0)
+	moves(game, "LR") # chaser walks one step, the player is not straight ahead
+	eq(Grid.manhattan(chaser.pos, Vector2i(1, 0)), 2, "chaser moved one tile closer")
+	eq(game.state.player.hp, 3, "no strike around a corner")
+
+
+func test_hazard_only_counts_at_turn_end() -> void:
+	var through := make("P^..", NO_KILL_WIN)
+	moves(through, "RR")
+	eq(through.state.player.hp, 3, "passing over a hazard mid-turn is safe")
+	var stay := make("P.^.", NO_KILL_WIN)
+	moves(stay, "RR")
+	eq(stay.state.player.hp, 2, "ending the turn on it hurts")
+
+
+func test_walking_into_a_projectile_hits() -> void:
+	var game := make("P....", NO_KILL_WIN)
+	game.state.spawn_projectile(Vector2i(1, 0), R, 1, 1)
+	moves(game, "R")
+	eq(game.state.player.hp, 2, "hit on entering its tile, mid-turn")
+	eq(game.state.projectiles.size(), 0, "projectile destroyed")
+
+
 # --- movement and time -------------------------------------------------------
 
 func test_invalid_move_costs_nothing() -> void:
-	var game := make("P.\n..", NO_KILL_WIN)
+	var game := classic("P.\n..", NO_KILL_WIN)
 	eq(game.try_move(U), false, "off-grid move rejected")
 	eq(game.try_move(L), false, "off-grid move rejected")
 	eq(game.state.step_count, 0, "no step passed")
 	eq(game.state.history.size(), 0, "history untouched")
-	var walled := make("P#\n..", NO_KILL_WIN)
+	var walled := classic("P#\n..", NO_KILL_WIN)
 	eq(walled.try_move(R), false, "wall rejected")
 	eq(walled.state.step_count, 0, "no step passed")
 
 
 func test_move_into_enemy_is_invalid_by_default() -> void:
-	var game := make("Pc\n..")
+	var game := classic("Pc\n..")
 	game.state.enemies[0].stun = 99
 	eq(game.try_move(R), false, "enemy tile rejected")
 	eq(game.state.step_count, 0, "no step passed")
 
 
 func test_boxed_in_passes_turn_and_chaser_attacks() -> void:
-	var game := make("P..c")
-	moves(game, "R") # chaser steps next to the player
+	var game := classic("P..c")
+	moves(game, "R") # chaser steps next to the player and strikes ahead
 	eq(game.state.enemies[0].pos, Vector2i(2, 0), "chaser approached")
-	moves(game, "L") # chaser follows; player is now boxed in
-	eq(game.state.player.hp, 3, "not hit while moving away")
+	eq(game.state.player.hp, 2, "struck right after its step")
+	moves(game, "L") # chaser follows and strikes again; player is now boxed in
+	eq(game.state.player.hp, 1, "moving away one tile is not enough")
 	eq(game.try_move(R), true, "boxed in: key press passes the turn")
-	eq(game.state.player.hp, 2, "adjacent chaser attacks")
 	eq(game.state.history.size(), 2, "passed turn is not in the history")
-	moves(game, "RR")
-	eq(game.state.status, GameState.Status.LOST, "lost at zero health")
+	eq(game.state.status, GameState.Status.LOST, "adjacent chaser attacks, lost at zero health")
 
 
 func test_boxed_in_lose_variant() -> void:
-	var game := make("P..c", {"boxed_in": GameRules.BoxedIn.LOSE})
+	var game := classic("P..c", {"boxed_in": GameRules.BoxedIn.LOSE})
 	moves(game, "RLR")
 	eq(game.state.status, GameState.Status.LOST, "boxed in counts as a loss")
 
@@ -208,7 +349,7 @@ func test_boxed_in_lose_variant() -> void:
 # --- combat ------------------------------------------------------------------
 
 func test_loop_kills_chaser_and_wins() -> void:
-	var game := make("....\n....\n.Pc.\n....")
+	var game := classic("....\n....\n.Pc.\n....")
 	game.state.enemies[0].stun = 99
 	moves(game, "ULDR") # ends where it started, facing right at the chaser
 	eq(game.state.enemies.size(), 0, "chaser removed")
@@ -216,7 +357,7 @@ func test_loop_kills_chaser_and_wins() -> void:
 
 
 func test_lstrike_damages_and_stuns() -> void:
-	var game := make("...s.\n..s..\nP....\n.....")
+	var game := classic("...s.\n..s..\nP....\n.....")
 	var beside := game.state.enemies[0] if game.state.enemies[0].pos == Vector2i(2, 1) else game.state.enemies[1]
 	var far := game.state.enemies[0] if beside == game.state.enemies[1] else game.state.enemies[1]
 	beside.stun = 1 # keep it from firing on the first step
@@ -229,7 +370,7 @@ func test_lstrike_damages_and_stuns() -> void:
 
 
 func test_stunned_enemy_skips_one_action() -> void:
-	var game := make("P...\n....\n....\n...c")
+	var game := classic("P...\n....\n....\n...c")
 	var chaser := game.state.enemies[0]
 	chaser.active = true
 	chaser.stun = 1
@@ -240,7 +381,7 @@ func test_stunned_enemy_skips_one_action() -> void:
 
 
 func test_shooter_fires_stepping_projectile() -> void:
-	var game := make(".P.....s", NO_KILL_WIN)
+	var game := classic(".P.....s", NO_KILL_WIN)
 	game.state.enemies[0].active = true
 	moves(game, "L")
 	eq(game.state.projectiles.size(), 1, "fired when lined up")
@@ -256,13 +397,13 @@ func test_shooter_fires_stepping_projectile() -> void:
 
 
 func test_projectile_swap_hits_and_sidestep_dodges() -> void:
-	var swap := make(".P....", NO_KILL_WIN)
+	var swap := classic(".P....", NO_KILL_WIN)
 	swap.state.spawn_projectile(Vector2i(2, 0), L, 1, 1)
 	moves(swap, "R")
 	eq(swap.state.player.hp, 2, "swapping tiles is a hit")
 	eq(swap.state.projectiles.size(), 0, "projectile destroyed")
 
-	var dodge := make(".P....\n......", NO_KILL_WIN)
+	var dodge := classic(".P....\n......", NO_KILL_WIN)
 	dodge.state.spawn_projectile(Vector2i(2, 0), L, 1, 1)
 	moves(dodge, "D")
 	eq(dodge.state.player.hp, 3, "stepping aside dodges")
@@ -270,7 +411,7 @@ func test_projectile_swap_hits_and_sidestep_dodges() -> void:
 
 
 func test_projectile_destroyed_by_wall() -> void:
-	var game := make("P..\n#..", NO_KILL_WIN)
+	var game := classic("P..\n#..", NO_KILL_WIN)
 	game.state.spawn_projectile(Vector2i(2, 1), L, 1, 1)
 	moves(game, "R")
 	eq(game.state.projectiles.size(), 1, "still flying")
@@ -279,7 +420,7 @@ func test_projectile_destroyed_by_wall() -> void:
 
 
 func test_boss_telegraphs_then_slams() -> void:
-	var game := make(".......\nP.....B\n.......")
+	var game := classic(".......\nP.....B\n.......")
 	var boss := game.state.enemies[0]
 	boss.active = true
 	var telegraphed := false
@@ -297,13 +438,13 @@ func test_boss_telegraphs_then_slams() -> void:
 # --- win and lose ------------------------------------------------------------
 
 func test_exit_wins() -> void:
-	var game := make("PE.....c")
+	var game := classic("PE.....c")
 	moves(game, "R")
 	eq(game.state.status, GameState.Status.WON, "exit wins")
 
 
 func test_player_advantage_on_simultaneous_resolution() -> void:
-	var game := make("cPE")
+	var game := classic("cPE")
 	game.state.player.hp = 1
 	moves(game, "R")
 	eq(game.state.status, GameState.Status.WON, "win is checked before enemies act")
@@ -313,7 +454,7 @@ func test_player_advantage_on_simultaneous_resolution() -> void:
 # --- terrain and pickups -----------------------------------------------------
 
 func test_slow_terrain_takes_two_steps_one_history_entry() -> void:
-	var game := make("P~..", NO_KILL_WIN)
+	var game := classic("P~..", NO_KILL_WIN)
 	moves(game, "R")
 	eq(game.state.player.pos, Vector2i(1, 0), "advanced one tile")
 	eq(game.state.step_count, 2, "world stepped twice")
@@ -323,12 +464,12 @@ func test_slow_terrain_takes_two_steps_one_history_entry() -> void:
 
 
 func test_hazard_damages_at_end_of_step() -> void:
-	var game := make("P^.", NO_KILL_WIN)
+	var game := classic("P^.", NO_KILL_WIN)
 	moves(game, "R")
 	eq(game.state.player.hp, 2, "1 damage")
 	moves(game, "R")
 	eq(game.state.player.hp, 2, "no damage after leaving")
-	var off := make("P^.", {"win_on_all_enemies_dead": false, "terrain_affects_player": false})
+	var off := classic("P^.", {"win_on_all_enemies_dead": false, "terrain_affects_player": false})
 	moves(off, "R")
 	eq(off.state.player.hp, 3, "switch turns terrain off for the player")
 
@@ -338,36 +479,40 @@ func test_upgrade_pickup() -> void:
 	moves(game, "R")
 	var choice := game.state.current_choice()
 	check(choice != null, "choice opened")
-	eq(choice.options.size(), 3, "three options")
+	eq(choice.options.size(), 2, "one upgrade per spear attack")
 	eq(game.state.step_count, 1, "picking up costs no extra step")
 	eq(game.try_move(R), false, "world is paused while the choice is open")
 	game.choose(0)
 	eq(game.state.current_choice(), null, "choice closed")
-	eq(game.state.find_ability(&"l_strike").effects[0].amount, 2, "+1 damage applied")
-	var source: AbilityDef = load("res://data/abilities/l_strike.tres")
+	eq(game.state.find_ability(&"spear_throw").effects[0].amount, 2, "+1 damage applied")
+	var source: AbilityDef = load("res://data/abilities/spear_throw.tres")
 	eq(source.effects[0].amount, 1, "data file untouched")
 	eq(game.state.tile_at(Vector2i(1, 0)).id, &"floor", "pickup consumed")
 	eq(game.try_move(R), true, "game continues")
 
 
 func test_new_ability_pickup() -> void:
-	var game := make("PA....", NO_KILL_WIN)
+	var game := make("PA......", NO_KILL_WIN)
 	var fired := record_abilities(game)
 	moves(game, "R")
+	eq(game.state.current_choice().options.size(), 2, "recoil is no longer offered")
 	game.choose(0)
 	eq(game.state.abilities.size(), 3, "ability added")
 	eq(game.state.abilities[2].id, &"lance", "lance gained")
-	moves(game, "RR") # the move onto the pickup counts as the first of three
-	eq(fired.get(3), ["Lance"], "three moves in a line fire the lance")
+	moves(game, "R")
+	eq(fired.get(2), ["Spear Throw"], "two moves: only the spear throw")
 	moves(game, "RR")
-	eq(fired.get(4), null, "no self-overlap")
-	eq(fired.get(5), null, "needs three fresh moves")
+	eq(fired.get(4), ["Spear Throw", "Lance"], "the lance reaches back into the previous turn")
+	moves(game, "RR")
+	eq(fired.get(6), ["Spear Throw"], "no lance self-overlap")
+	for move in [1, 3, 5]:
+		eq(fired.get(move), null, "nothing mid-turn (move %d)" % move)
 
 
 # --- vision ------------------------------------------------------------------
 
 func test_walls_block_sight_and_activation() -> void:
-	var game := make("P#c\n...")
+	var game := classic("P#c\n...")
 	eq(game.state.is_visible(Vector2i(2, 0)), false, "tile behind wall hidden")
 	eq(game.state.enemies[0].active, false, "unseen enemy stays idle")
 	moves(game, "D")
@@ -377,7 +522,7 @@ func test_walls_block_sight_and_activation() -> void:
 
 
 func test_enemy_out_of_range_stays_idle() -> void:
-	var game := make("P.......c\n.........")
+	var game := classic("P.......c\n.........")
 	moves(game, "D")
 	eq(game.state.enemies[0].active, false, "idle beyond activation range")
 	eq(game.state.enemies[0].pos, Vector2i(8, 0), "did not move")
@@ -393,6 +538,13 @@ func test_shipped_room_loads() -> void:
 	eq(game.state.player.pos, Vector2i(5, 15), "player start")
 	eq(game.state.tile_at(Vector2i(13, 0)).id, &"exit", "exit tile")
 	eq(game.state.abilities.size(), 2, "two starting abilities")
+	eq(game.state.abilities[0].id, &"spear_throw", "spear throw")
+	eq(game.state.abilities[1].id, &"spear_thrust", "spear thrust")
+	eq(game.config.rules.player_moves_per_turn, 2, "two moves per turn")
+	var hp := {}
+	for e in game.state.enemies:
+		hp[e.def.id] = e.max_hp
+	eq(hp, {&"chaser": 2, &"shooter": 2, &"boss": 6}, "enemy health")
 	eq(game.state.is_seen(Vector2i(14, 0)), true, "exit visible from the start")
 	eq(game.state.is_visible(Vector2i(14, 0)), false, "but not in current vision")
 	eq(game.try_move(U), true, "can move")

@@ -29,7 +29,8 @@ func _draw() -> void:
 			draw_rect(pip, s.player_color)
 		draw_rect(pip, Color.BLACK, false, 1.5)
 	y += 26
-	DrawUtil.text(self, font, Vector2(0, y), "Step %d      Enemies left: %d" % [s.step_count, s.enemies.size()], 14)
+	var per_turn := maxi(1, s.rules.player_moves_per_turn)
+	DrawUtil.text(self, font, Vector2(0, y), "Turn %d, move %d/%d      Enemies left: %d" % [s.turn_count + 1, s.turn_step + 1, per_turn, s.enemies.size()], 14)
 
 	y += 32
 	DrawUtil.text(self, font, Vector2(0, y), "Last moves", 16)
@@ -92,7 +93,8 @@ func _draw_preview_line(dir: int, pos: Vector2, font: Font) -> void:
 		DrawUtil.text(self, font, pos, "blocked", 13, DrawUtil.MUTED)
 		return
 	if preview.hits.is_empty():
-		DrawUtil.text(self, font, pos, "nothing", 13, DrawUtil.MUTED)
+		var note := "nothing" if preview.ends_turn else "turn continues"
+		DrawUtil.text(self, font, pos, note, 13, DrawUtil.MUTED)
 		return
 	var x := pos.x
 	for hit in preview.hits:

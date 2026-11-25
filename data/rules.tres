@@ -18,6 +18,7 @@ script = ExtResource("3")
 
 [sub_resource type="Resource" id="p02_trigger_abilities"]
 script = ExtResource("4")
+turn_end_only = true
 
 [sub_resource type="Resource" id="p03_remove_dead"]
 script = ExtResource("5")
@@ -27,12 +28,15 @@ script = ExtResource("6")
 
 [sub_resource type="Resource" id="p05_enemy_actions"]
 script = ExtResource("7")
+turn_end_only = true
 
 [sub_resource type="Resource" id="p06_projectiles"]
 script = ExtResource("8")
+turn_end_only = true
 
 [sub_resource type="Resource" id="p07_tile_end_step"]
 script = ExtResource("9")
+turn_end_only = true
 
 [sub_resource type="Resource" id="p08_remove_dead"]
 script = ExtResource("5")
@@ -52,6 +56,7 @@ script = ExtResource("12")
 [resource]
 script = ExtResource("1")
 boxed_in = 0
+player_moves_per_turn = 2
 move_into_enemy = 0
 self_damage = false
 walls_block_effects = false

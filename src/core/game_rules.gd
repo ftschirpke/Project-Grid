@@ -16,6 +16,9 @@ enum MoveIntoEnemy {
 @export_group("Movement")
 @export var boxed_in: BoxedIn = BoxedIn.PASS_TURN
 @export var move_into_enemy: MoveIntoEnemy = MoveIntoEnemy.INVALID
+## Player moves per turn. Phases flagged `turn_end_only` (abilities, enemies,
+## projectiles, hazards) run once per turn, after the last of these moves.
+@export_range(1, 4) var player_moves_per_turn := 2
 
 @export_group("Abilities")
 ## The player is hit by their own abilities when standing in the area.

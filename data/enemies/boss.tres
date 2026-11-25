@@ -22,6 +22,6 @@ id = &"boss"
 display_name = "Boss"
 symbol = "B"
 color = Color(0.4, 0, 0.35, 1)
-max_health = 24
+max_health = 6
 activation_range = 5.0
 behavior = SubResource("behavior")

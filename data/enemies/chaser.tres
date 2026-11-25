@@ -6,6 +6,7 @@
 [sub_resource type="Resource" id="behavior"]
 script = ExtResource("2")
 damage = 1
+attack_after_move = true
 avoid_hazards = true
 
 [resource]
@@ -14,6 +15,6 @@ id = &"chaser"
 display_name = "Chaser"
 symbol = "c"
 color = Color(0.63, 0, 0.15, 1)
-max_health = 8
+max_health = 2
 activation_range = 5.0
 behavior = SubResource("behavior")

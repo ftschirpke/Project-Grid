@@ -14,6 +14,27 @@ class Move extends UnitAction:
 		state.try_move_enemy(unit, target)
 
 
+## Step onto an adjacent tile, then strike the next tile in the same
+## direction. The strike only happens if the step succeeded and something
+## hostile stands there.
+class MoveAndAttack extends UnitAction:
+	var target: Vector2i
+	var damage: int
+
+	func _init(target_tile: Vector2i, amount: int) -> void:
+		target = target_tile
+		damage = amount
+
+	func execute(unit: Unit, state: GameState) -> void:
+		var step := target - unit.pos
+		if not state.try_move_enemy(unit, target):
+			return
+		var ahead: Array[Vector2i] = [unit.pos + step]
+		if state.targets_on(ahead, unit).is_empty():
+			return
+		Attack.new(ahead, damage).execute(unit, state)
+
+
 ## Damage everything hostile on the given tiles. Clears the unit's telegraph.
 class Attack extends UnitAction:
 	var tiles: Array[Vector2i]
