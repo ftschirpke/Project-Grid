@@ -29,6 +29,7 @@ script = ExtResource("6")
 [sub_resource type="Resource" id="p05_enemy_actions"]
 script = ExtResource("7")
 turn_end_only = true
+opens_enemy_phase = true
 
 [sub_resource type="Resource" id="p06_projectiles"]
 script = ExtResource("8")

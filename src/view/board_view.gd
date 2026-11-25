@@ -11,6 +11,8 @@ const TRAIL_LENGTH := 6
 var game: Game
 ## Results of Game.preview() for the four directions.
 var previews: Array = []
+## Text shown across the top of the board, e.g. during the enemy phase.
+var phase_banner := ""
 var _flashes: Array = [] # { tiles, color, time }
 
 
@@ -74,7 +76,18 @@ func _draw() -> void:
 	_draw_units(s, ts, font)
 	_draw_flashes()
 	draw_rect(Rect2(_origin(), Vector2(s.width, s.height) * ts), Color.BLACK, false, 2.0)
+	_draw_phase_banner(s, ts, font)
 	_draw_end_banner(s, font)
+
+
+func _draw_phase_banner(s: GameState, ts: float, font: Font) -> void:
+	if phase_banner == "" or s.status != GameState.Status.PLAYING:
+		return
+	var board := Rect2(_origin(), Vector2(s.width, s.height) * ts)
+	draw_rect(board, Color(0.6, 0.0, 0.08), false, 5.0)
+	var band := Rect2(board.position, Vector2(board.size.x, 34))
+	draw_rect(band, Color(0.45, 0.0, 0.06, 0.85))
+	DrawUtil.text_centered(self, font, band, phase_banner, 20, Color.WHITE)
 
 
 func _draw_tiles(s: GameState, ts: float, font: Font) -> void:

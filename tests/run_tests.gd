@@ -308,6 +308,76 @@ func test_walking_into_a_projectile_hits() -> void:
 	eq(game.state.projectiles.size(), 0, "projectile destroyed")
 
 
+# --- separate enemy phase (view toggle) --------------------------------------
+
+func test_enemy_phase_pauses_and_resumes() -> void:
+	var game := make("P.......\n........\n.......c", NO_KILL_WIN)
+	game.pause_before_enemies = true
+	var chaser := game.state.enemies[0]
+	chaser.active = true
+	moves(game, "R")
+	eq(game.is_enemy_phase_pending(), false, "no pause after the first move")
+	moves(game, "D")
+	eq(game.is_enemy_phase_pending(), true, "paused after the second move")
+	eq(game.state.player.pos, Vector2i(1, 1), "the player's moves are done")
+	eq(chaser.pos, Vector2i(7, 2), "enemies have not acted yet")
+	eq(game.try_move(R), false, "no input while the enemy phase is pending")
+	eq(game.resume_enemy_phase(), true, "resumed")
+	check(chaser.pos != Vector2i(7, 2), "enemies acted")
+	eq(game.is_enemy_phase_pending(), false, "nothing pending afterwards")
+	eq(game.state.turn_count, 1, "turn completed")
+	eq(game.resume_enemy_phase(), false, "nothing to resume")
+
+
+func test_enemy_phase_skipped_when_nothing_acts() -> void:
+	var game := make("P.......\n........\n.......c", NO_KILL_WIN)
+	game.pause_before_enemies = true
+	moves(game, "RD")
+	eq(game.is_enemy_phase_pending(), false, "idle enemies: no pause")
+
+
+func test_enemy_phase_pause_does_not_change_the_outcome() -> void:
+	var room := "P....\n.....\n..c.s\n....."
+	var results := []
+	for pause in [false, true]:
+		var game := make(room, NO_KILL_WIN)
+		game.pause_before_enemies = pause
+		for e in game.state.enemies:
+			e.active = true
+		for c in "RRDULRDD":
+			game.try_move("URDL".find(c))
+			while game.is_enemy_phase_pending():
+				game.resume_enemy_phase()
+		var enemies: Array = game.state.enemies.map(func(e: Unit) -> Array: return [e.pos, e.hp])
+		results.append([game.state.player.pos, game.state.player.hp, enemies, game.state.projectiles.size(), game.state.turn_count])
+	eq(results[1], results[0], "same board with and without the pause")
+
+
+func test_enemy_phase_pause_inside_slow_terrain() -> void:
+	var game := make("P~..\n....\n...c", NO_KILL_WIN)
+	game.pause_before_enemies = true
+	game.state.enemies[0].active = true
+	moves(game, "D") # first move of the turn
+	moves(game, "U") # second move ends the turn
+	eq(game.is_enemy_phase_pending(), true, "paused")
+	game.resume_enemy_phase()
+	moves(game, "R") # wading takes both steps of the next turn; the second ends it
+	eq(game.is_enemy_phase_pending(), true, "paused on the wading move's second step")
+	eq(game.state.player.pos, Vector2i(1, 0), "player arrived in the slow tile")
+	game.resume_enemy_phase()
+	eq(game.state.reserved_tile, GameState.NO_TILE, "reservation released afterwards")
+
+
+func test_restart_clears_pending_enemy_phase() -> void:
+	var game := make("P.......\n........\n.......c", NO_KILL_WIN)
+	game.pause_before_enemies = true
+	game.state.enemies[0].active = true
+	moves(game, "RD")
+	game.restart()
+	eq(game.is_enemy_phase_pending(), false, "restart drops the pause")
+	eq(game.try_move(R), true, "input works again")
+
+
 # --- movement and time -------------------------------------------------------
 
 func test_invalid_move_costs_nothing() -> void:

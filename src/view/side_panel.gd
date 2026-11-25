@@ -8,6 +8,7 @@ const HISTORY_SHOWN := 8
 var game: Game
 var previews: Array = []
 var log_lines: Array[String] = []
+var show_enemy_phase := true
 
 
 func bind(new_game: Game) -> void:
@@ -30,7 +31,8 @@ func _draw() -> void:
 		draw_rect(pip, Color.BLACK, false, 1.5)
 	y += 26
 	var per_turn := maxi(1, s.rules.player_moves_per_turn)
-	DrawUtil.text(self, font, Vector2(0, y), "Turn %d, move %d/%d      Enemies left: %d" % [s.turn_count + 1, s.turn_step + 1, per_turn, s.enemies.size()], 14)
+	var phase := "enemy turn" if game.is_enemy_phase_pending() else "move %d/%d" % [s.turn_step + 1, per_turn]
+	DrawUtil.text(self, font, Vector2(0, y), "Turn %d, %s      Enemies left: %d" % [s.turn_count + 1, phase, s.enemies.size()], 14)
 
 	y += 32
 	DrawUtil.text(self, font, Vector2(0, y), "Last moves", 16)
@@ -81,7 +83,8 @@ func _draw() -> void:
 		y += 18
 		DrawUtil.text(self, font, Vector2(0, y), line, 12, DrawUtil.MUTED)
 
-	DrawUtil.text(self, font, Vector2(0, size.y - 6), "Arrows / WASD: move    1-3: choose    R: restart", 12, DrawUtil.MUTED)
+	DrawUtil.text(self, font, Vector2(0, size.y - 22), "Arrows / WASD: move    1-3: choose    R: restart", 12, DrawUtil.MUTED)
+	DrawUtil.text(self, font, Vector2(0, size.y - 6), "P: show enemy phase (%s)" % ("on" if show_enemy_phase else "off"), 12, DrawUtil.MUTED)
 
 
 func _draw_preview_line(dir: int, pos: Vector2, font: Font) -> void:
