@@ -9,6 +9,13 @@ var state: GameState
 var tile_types: Array[TileDef] = []
 var enemy_types: Array[EnemyDef] = []
 var _room_text := ""
+## Stop before the enemy phase of each turn until resume_enemy_phase() is
+## called. Presentation only: the outcome is identical either way.
+var pause_before_enemies := false
+## Steps of the current key press still to run (several on slow terrain).
+var _queue: Array[StepContext] = []
+## Index of the phase the paused step continues with, or -1.
+var _paused_at := -1
 
 
 ## `room_text` overrides the configured room file (used by tests).
@@ -26,6 +33,8 @@ func _init(game_config: GameConfig, room_text: String = "") -> void:
 
 ## Rebuilds the room from scratch. `state` is a new object afterwards.
 func restart() -> void:
+	_queue.clear()
+	_paused_at = -1
 	state = RoomLoader.build(config, _room_text, tile_types, enemy_types)
 	state.update_vision()
 	state.update_activation()
@@ -33,7 +42,7 @@ func restart() -> void:
 
 ## Handles one direction key. Returns true if time passed.
 func try_move(dir: int) -> bool:
-	if state.status != GameState.Status.PLAYING or state.current_choice() != null:
+	if state.status != GameState.Status.PLAYING or state.current_choice() != null or is_enemy_phase_pending():
 		return false
 	var target := state.player.pos + Grid.vec(dir)
 	if not state.can_player_enter(target):
@@ -41,7 +50,8 @@ func try_move(dir: int) -> bool:
 			return false
 		match config.rules.boxed_in:
 			GameRules.BoxedIn.PASS_TURN:
-				_run_step(StepContext.new())
+				_queue.append(StepContext.new())
+				_run_queue()
 				return true
 			GameRules.BoxedIn.LOSE:
 				state.lose("Boxed in")
@@ -56,10 +66,26 @@ func try_move(dir: int) -> bool:
 		ctx.dir = dir
 		ctx.target = target
 		ctx.completes_move = i == cost - 1
-		_run_step(ctx)
-		if state.status != GameState.Status.PLAYING:
-			break
-	state.reserved_tile = GameState.NO_TILE
+		_queue.append(ctx)
+	_run_queue()
+	return true
+
+
+## True while the game waits (pause_before_enemies) for the enemy phase.
+func is_enemy_phase_pending() -> bool:
+	return _paused_at >= 0
+
+
+## Runs the enemy phase the game paused before, and any steps of the same key
+## press after it. Returns false if nothing was pending.
+func resume_enemy_phase() -> bool:
+	if not is_enemy_phase_pending():
+		return false
+	var from := _paused_at
+	_paused_at = -1
+	if _run_step(_queue[0], from):
+		_queue.pop_front()
+		_run_queue()
 	return true
 
 
@@ -100,15 +126,53 @@ func _moves_per_turn() -> int:
 	return maxi(1, config.rules.player_moves_per_turn)
 
 
-func _run_step(ctx: StepContext) -> void:
-	ctx.ends_turn = state.turn_step + 1 >= _moves_per_turn()
-	state.begin_step()
-	for phase in config.rules.phases:
+## Runs queued steps until the queue is empty or a step pauses.
+func _run_queue() -> void:
+	while not _queue.is_empty():
+		if state.status != GameState.Status.PLAYING:
+			_queue.clear()
+			break
+		if not _run_step(_queue[0]):
+			return
+		_queue.pop_front()
+	state.reserved_tile = GameState.NO_TILE
+
+
+## Runs one world step from phase `from`. Returns false if it paused before
+## the enemy phase; resume_enemy_phase() continues it.
+func _run_step(ctx: StepContext, from := 0) -> bool:
+	var phases := config.rules.phases
+	if from == 0:
+		ctx.ends_turn = state.turn_step + 1 >= _moves_per_turn()
+		state.begin_step()
+	for i in range(from, phases.size()):
 		if state.status != GameState.Status.PLAYING:
 			break
+		var phase := phases[i]
 		if phase == null or (phase.turn_end_only and not ctx.ends_turn):
 			continue
+		if i != from and phase.opens_enemy_phase and _should_pause():
+			_paused_at = i
+			state.emit_event(&"enemy_phase_pending")
+			return false
 		phase.run(state, ctx)
+	_finish_step(ctx)
+	return true
+
+
+## Pause only when something will visibly act, so empty turns stay instant.
+func _should_pause() -> bool:
+	if not pause_before_enemies:
+		return false
+	if not state.projectiles.is_empty():
+		return true
+	for e in state.enemies:
+		if e.is_alive() and e.active:
+			return true
+	return false
+
+
+func _finish_step(ctx: StepContext) -> void:
 	if ctx.ends_turn:
 		state.turn_count += 1
 		state.turn_step = 0

@@ -347,6 +347,11 @@ able to see what a step will do. Suggested for the prototype:
 - Health of the player and of visible enemies.
 - A clear flash on the affected tiles when an ability fires.
 - Restart key.
+- **[Decided] (2026-11-25):** the enemy phase can be shown as a separate beat. After the
+  player's last move of a turn the board shows "ENEMY TURN", then all enemies and
+  projectiles act at once. Only when something active is on the board; the outcome is the
+  same either way. Toggle with P (stored in `user://settings.cfg`); off means seamless as
+  before. Core: `Game.pause_before_enemies`, the phase flagged `opens_enemy_phase`.
 
 ## 13. Open questions for the designers
 

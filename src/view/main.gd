@@ -4,6 +4,11 @@ extends Control
 
 const LOG_LINES := 8
 const BACKGROUND := Color(0.95, 0.95, 0.96)
+## Enemy phase display: pause after the player's last move, then hold the
+## result briefly before input is accepted again.
+const ENEMY_PHASE_DELAY := 0.35
+const ENEMY_PHASE_HOLD := 0.25
+const SETTINGS_PATH := "user://settings.cfg"
 
 @export var config: GameConfig
 
@@ -16,6 +21,10 @@ var _choice_title: Label
 var _choice_buttons: VBoxContainer
 var _shown_choice: Choice
 var _log: Array[String] = []
+## Show the enemy phase as a separate beat (toggle with P).
+var _show_enemy_phase := true
+## Input is ignored while the enemy phase plays.
+var _busy := false
 
 
 func _ready() -> void:
@@ -23,6 +32,8 @@ func _ready() -> void:
 		config = load("res://data/game.tres")
 	_build_ui()
 	game = Game.new(config)
+	_load_settings()
+	game.pause_before_enemies = _show_enemy_phase
 	_bind_state()
 
 
@@ -105,6 +116,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	match key.keycode:
 		KEY_R:
 			_restart()
+		KEY_P:
+			_toggle_enemy_phase()
 		KEY_UP, KEY_W:
 			_move(Grid.Dir.UP)
 		KEY_RIGHT, KEY_D:
@@ -122,8 +135,52 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _move(dir: int) -> void:
+	if _busy:
+		return
 	game.try_move(dir)
 	_refresh()
+	if game.is_enemy_phase_pending():
+		_play_enemy_phase()
+
+
+## Your moves are on the board; announce the enemies, then let them all act
+## at once.
+func _play_enemy_phase() -> void:
+	_busy = true
+	_board.phase_banner = "ENEMY TURN"
+	_refresh()
+	await get_tree().create_timer(ENEMY_PHASE_DELAY).timeout
+	# A restart in the meantime drops the pending phase.
+	if game.is_enemy_phase_pending():
+		game.resume_enemy_phase()
+		_refresh()
+		await get_tree().create_timer(ENEMY_PHASE_HOLD).timeout
+	_board.phase_banner = ""
+	_busy = false
+	_refresh()
+
+
+func _toggle_enemy_phase() -> void:
+	_show_enemy_phase = not _show_enemy_phase
+	game.pause_before_enemies = _show_enemy_phase
+	_side.show_enemy_phase = _show_enemy_phase
+	_add_log("Enemy phase: %s" % ("shown" if _show_enemy_phase else "instant"))
+	_save_settings()
+	_refresh()
+
+
+func _load_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) == OK:
+		_show_enemy_phase = cfg.get_value("display", "show_enemy_phase", true)
+	_side.show_enemy_phase = _show_enemy_phase
+
+
+func _save_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("display", "show_enemy_phase", _show_enemy_phase)
+	cfg.save(SETTINGS_PATH)
 
 
 func _choose(index: int) -> void:
@@ -134,7 +191,7 @@ func _choose(index: int) -> void:
 func _refresh() -> void:
 	var state := game.state
 	var previews: Array = []
-	if state.status == GameState.Status.PLAYING and state.current_choice() == null:
+	if state.status == GameState.Status.PLAYING and state.current_choice() == null and not _busy:
 		for dir in 4:
 			previews.append(game.preview(dir))
 	_board.previews = previews
