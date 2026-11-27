@@ -7,7 +7,7 @@ extends EnemyBehavior
 ## What the boss does between slams (for example a ChaseBehavior).
 @export var base: EnemyBehavior
 ## Actions between two telegraphs.
-@export var slam_interval := 4
+@export_range(1, 99) var slam_interval := 4
 ## 1 marks the 3x3 around the boss, 2 the 5x5, and so on.
 @export var slam_radius := 1
 @export var slam_damage := 2

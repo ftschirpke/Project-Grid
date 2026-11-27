@@ -1,3 +1,7 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Per-developer state written by the running game: the sandbox design
+# (Ctrl+D) and display settings.
+/local/

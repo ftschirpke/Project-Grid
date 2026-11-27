@@ -5,7 +5,7 @@ extends RefCounted
 ## and listens to `event`.
 
 ## Everything worth showing or logging. Types used by the core:
-## ability_fired {ability, tiles, rotation} · damaged {unit, amount, pos, source}
+## ability_fired {ability, tiles, rotation, mirrored} · damaged {unit, amount, pos, source}
 ## died {unit, pos} · attack {unit, tiles} · activated {unit}
 ## projectile_spawned {projectile} · projectile_hit {projectile, unit}
 ## choice_opened {choice} · choice_resolved {option}
@@ -205,6 +205,8 @@ func run_tile_effects(effects: Array[TileEffect], unit: Unit, pos: Vector2i) -> 
 func damage_unit(unit: Unit, amount: int, source: Unit = null) -> void:
 	if amount <= 0 or not unit.is_alive():
 		return
+	if unit.is_player and rules.player_invulnerable:
+		return
 	unit.hp -= amount
 	if not unit.is_player and rules.damage_activates_enemies:
 		unit.active = true
@@ -241,9 +243,9 @@ func remove_dead_enemies() -> void:
 
 ## Board tiles an ability hits when its pattern ends on `anchor`: those of
 ## one effect, or of all its effects together when `effect` is null.
-func effect_tiles(ability: AbilityDef, anchor: Vector2i, rotation: int, effect: AbilityEffect = null) -> Array[Vector2i]:
+func effect_tiles(ability: AbilityDef, anchor: Vector2i, rotation: int, effect: AbilityEffect = null, mirrored := false) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
-	for pos in ability.area_tiles(anchor, rotation, effect):
+	for pos in ability.area_tiles(anchor, rotation, effect, mirrored):
 		if not in_bounds(pos):
 			continue
 		if rules.walls_block_effects:
@@ -253,11 +255,13 @@ func effect_tiles(ability: AbilityDef, anchor: Vector2i, rotation: int, effect: 
 	return out
 
 
-## Abilities completed by the last move of `moves`, honouring the turn rule:
-## a pattern no longer than a turn must lie inside the turn starting at
-## history index `turn_start`; longer patterns may reach into earlier turns.
+## Abilities completed by the last move of `moves`. With the rule switch
+## `abilities_only_at_turn_end`, a pattern no longer than a turn must lie
+## inside the turn starting at history index `turn_start`; otherwise any
+## pattern may reach into earlier turns.
 func ability_matches(moves: Array[int], turn_start: int) -> Array[PatternMatcher.Match]:
-	return PatternMatcher.find_matches(moves, abilities, last_trigger, turn_start, rules.player_moves_per_turn)
+	var turn_length := rules.player_moves_per_turn if rules.abilities_only_at_turn_end else 0
+	return PatternMatcher.find_matches(moves, abilities, last_trigger, turn_start, turn_length)
 
 
 func find_ability(id: StringName) -> AbilityDef:

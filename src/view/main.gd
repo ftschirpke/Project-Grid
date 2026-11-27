@@ -8,11 +8,25 @@ const BACKGROUND := Color(0.95, 0.95, 0.96)
 ## result briefly before input is accepted again.
 const ENEMY_PHASE_DELAY := 0.35
 const ENEMY_PHASE_HOLD := 0.25
-const SETTINGS_PATH := "user://settings.cfg"
-
+## The shipped game: the defaults the sandbox starts from and resets to.
 @export var config: GameConfig
 
+## Everything the game's own code writes goes into this git-ignored folder
+## inside the project. (Godot itself still keeps logs and caches in its user
+## data folder.)
+var settings_path := "res://local/settings.cfg"
+var design_path := "res://local/sandbox_design.tres"
+
 var game: Game
+## What is actually played: the defaults, or the sandbox edits saved in
+## design_path. Edited in the sandbox layer (Ctrl+D).
+var _design: Design
+var _sandbox: SandboxLayer
+## The saved design differs from the defaults.
+var _design_edited := false
+## Edits made since the layer was opened: save them, restart the room.
+var _design_dirty := false
+var _aids_dirty := false
 var _board: BoardView
 var _abilities: AbilityPanel
 var _side: SidePanel
@@ -31,9 +45,20 @@ func _ready() -> void:
 	if config == null:
 		config = load("res://data/game.tres")
 	_build_ui()
-	game = Game.new(config)
 	_load_settings()
+	_design = Design.load_saved(design_path)
+	_design_edited = _design != null
+	if _design == null:
+		_design = Design.from_defaults(config)
+	_start_game()
+
+
+## Starts the room from the current design with a fresh Game.
+func _start_game() -> void:
+	game = Game.new(_design.make_config(config), _design.room_text(), _design.tiles, _design.enemies)
 	game.pause_before_enemies = _show_enemy_phase
+	_log.clear()
+	_shown_choice = null
 	_bind_state()
 
 
@@ -93,6 +118,80 @@ func _build_ui() -> void:
 	_choice_buttons.add_theme_constant_override("separation", 8)
 	column.add_child(_choice_buttons)
 
+	# Debug and editing layer, above everything else.
+	_sandbox = SandboxLayer.new()
+	_sandbox.design_changed.connect(func() -> void: _design_dirty = true)
+	_sandbox.aids_changed.connect(func() -> void: _aids_dirty = true)
+	_sandbox.reset_requested.connect(_reset_design)
+	_sandbox.close_requested.connect(_close_sandbox)
+	add_child(_sandbox)
+
+
+# --- Sandbox -----------------------------------------------------------------
+
+func _open_sandbox() -> void:
+	_design_dirty = false
+	_aids_dirty = false
+	_sandbox.bind(_design)
+	_sandbox.visible = true
+
+
+## Keeps the edits and returns to the game. The room restarts if the design
+## changed; a testing aid alone applies to the room as it stands.
+func _close_sandbox() -> void:
+	# A number that was typed but not confirmed with Enter still counts.
+	_sandbox.commit_fields()
+	get_viewport().gui_release_focus()
+	_sandbox.visible = false
+	_save_design()
+	if _design_dirty:
+		_start_game()
+	elif _aids_dirty:
+		_design.apply_testing_aids(game.config.rules, config.rules)
+		game.state.update_vision()
+		_refresh()
+	_design_dirty = false
+	_aids_dirty = false
+
+
+func _save_design() -> void:
+	if not (_design_dirty or _aids_dirty):
+		return
+	if _design.save(design_path) == OK:
+		_design_edited = true
+	else:
+		push_warning("Sandbox: could not save %s" % design_path)
+
+
+## Throws the saved design away and goes back to the shipped game.
+func _reset_design() -> void:
+	if FileAccess.file_exists(design_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(design_path))
+	_design = Design.from_defaults(config)
+	_design_edited = false
+	_sandbox.bind(_design)
+	_start_game()
+	_design_dirty = false
+	_aids_dirty = false
+
+
+func _notification(what: int) -> void:
+	# Closing the window with the layer open must not lose the edits.
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and _sandbox != null and _sandbox.visible:
+		_sandbox.commit_fields()
+		_save_design()
+
+
+func _input(event: InputEvent) -> void:
+	# Caught before the UI, so the shortcut also works while a field has focus.
+	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_D and key.ctrl_pressed:
+		if _sandbox.visible:
+			_close_sandbox()
+		else:
+			_open_sandbox()
+		get_viewport().set_input_as_handled()
+
 
 func _restart() -> void:
 	game.restart()
@@ -112,6 +211,8 @@ func _bind_state() -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
+		return
+	if _sandbox.visible or key.ctrl_pressed:
 		return
 	match key.keycode:
 		KEY_R:
@@ -171,16 +272,17 @@ func _toggle_enemy_phase() -> void:
 
 func _load_settings() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS_PATH) == OK:
+	if cfg.load(settings_path) == OK:
 		_show_enemy_phase = cfg.get_value("display", "show_enemy_phase", true)
 	_side.show_enemy_phase = _show_enemy_phase
 
 
 func _save_settings() -> void:
 	var cfg := ConfigFile.new()
-	cfg.load(SETTINGS_PATH)
+	cfg.load(settings_path)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(settings_path.get_base_dir()))
 	cfg.set_value("display", "show_enemy_phase", _show_enemy_phase)
-	cfg.save(SETTINGS_PATH)
+	cfg.save(settings_path)
 
 
 func _choose(index: int) -> void:
@@ -197,10 +299,22 @@ func _refresh() -> void:
 	_board.previews = previews
 	_side.previews = previews
 	_side.log_lines = _log
+	_side.sandbox_note = _sandbox_note()
 	_board.queue_redraw()
 	_abilities.queue_redraw()
 	_side.queue_redraw()
 	_update_choice()
+
+
+## What the status column says about the sandbox, so nobody mistakes an
+## edited room or a testing aid for the shipped game.
+func _sandbox_note() -> String:
+	var parts: PackedStringArray = ["edited design" if _design_edited else "defaults"]
+	if _design.fog_off:
+		parts.append("fog off")
+	if _design.invulnerable:
+		parts.append("invulnerable")
+	return ", ".join(parts)
 
 
 func _update_choice() -> void:

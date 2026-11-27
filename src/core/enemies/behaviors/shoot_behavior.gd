@@ -6,9 +6,9 @@ extends EnemyBehavior
 ## Maximum distance (tiles) at which it fires.
 @export var max_range := 8
 ## Fires at most once every this many steps.
-@export var fire_interval := 3
+@export_range(1, 99) var fire_interval := 3
 ## Tiles the projectile travels per step.
-@export var projectile_speed := 1
+@export_range(1, 99) var projectile_speed := 1
 @export var projectile_damage := 1
 @export var avoid_hazards := true
 
