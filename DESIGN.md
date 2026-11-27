@@ -68,7 +68,7 @@ beyond coloured boxes, sound, menus beyond restart.
 - **[Default]** Moving into a tile occupied by an enemy is an invalid move.
 - **[Decided] after the second playtest (2026-11-25):** the player makes **two moves per
   turn**; enemies, projectiles and hazards act once, after the second move. Abilities are
-  only evaluated at the end of a turn (see 6.1). Rule switch `player_moves_per_turn`; the
+  evaluated on every move since 2026-11-27 (see 6.1). Rule switch `player_moves_per_turn`; the
   phases that wait for the turn end are flagged `turn_end_only` in `data/rules.tres`.
   Walking into a projectile's tile mid-turn is a hit; crossing a hazard mid-turn is not.
 - **[Default]** If the player has no valid move at all (boxed in), a key press passes the
@@ -109,6 +109,10 @@ This is the core of the game and should be the most carefully built system.
   pattern exactly (suffix match). What came before the pattern is irrelevant.
 - **[Decided]** Patterns can be **rotated** in 90° steps. They are **never mirrored**.
   Rotation can be disallowed per ability, so it must be a per-ability setting.
+  - **[Decided] (2026-11-27):** mirroring is now a per-ability switch, `mirrorable`, off by
+    default, so every existing ability behaves as before. With it on, the left-right mirror
+    image of the pattern also fires ("up, right" also on "up, left") and the area flips
+    with it, in every rotation if the ability is rotatable too.
 - **[Decided]** **Different abilities can overlap.** One move can count toward several
   abilities, and all of them trigger. Example: the first two moves of the loop are an
   L-strike, so both fire in the course of one loop.
@@ -120,10 +124,13 @@ This is the core of the game and should be the most carefully built system.
     new match is valid only if its first move comes after that index.
   - Resulting behaviour on a continuous clockwise circle: the L-strike fires every second
     step and the loop every fourth step.
-- **[Decided] after the second playtest:** abilities trigger only on the **last move of a
-  turn**. A pattern no longer than a turn must lie inside that turn, so two moves that
-  straddle a turn boundary never combine. Longer patterns (lance, zigzag) may reach back
-  into the previous turn.
+- **[Decided] 2026-11-27, replacing the rule from the second playtest:** an ability
+  triggers on the move that completes its pattern, on **any move of a turn**, and a
+  pattern may start in one turn and end in the next. The enemies still act only after
+  the last move of a turn.
+  - The earlier rule (abilities trigger only on the last move of a turn, and a pattern no
+    longer than a turn must lie inside that turn) is kept as the rule switch
+    `abilities_only_at_turn_end`, off by default.
 - **[Default]** If several abilities trigger on the same move, they resolve in the order
   they are listed in the player's ability list.
 
@@ -350,7 +357,7 @@ able to see what a step will do. Suggested for the prototype:
 - **[Decided] (2026-11-25):** the enemy phase can be shown as a separate beat. After the
   player's last move of a turn the board shows "ENEMY TURN", then all enemies and
   projectiles act at once. Only when something active is on the board; the outcome is the
-  same either way. Toggle with P (stored in `user://settings.cfg`); off means seamless as
+  same either way. Toggle with P (stored in `local/settings.cfg`); off means seamless as
   before. Core: `Game.pause_before_enemies`, the phase flagged `opens_enemy_phase`.
 
 ## 13. Open questions for the designers
@@ -391,6 +398,28 @@ automatically and can then be typed into the room file. New effect, behaviour, t
 or phase kinds are one small script each under `src/core`. Rules live in `src/core` and do
 not touch the scene tree; `src/view` only draws. Rules tests:
 `godot --headless --path . --script res://tests/run_tests.gd`.
+
+**Sandbox (2026-11-27)**
+
+`Ctrl+D` opens a debug and editing layer over the running game. It edits the room (paint
+tiles, place enemies and the player start, change the size), the abilities (create, delete,
+pattern, rotatable, mirrorable, effects, shared area and an own area per effect, which ones
+the player starts with) and the numbers of the player, the enemy types and the tile types.
+Fog off and invulnerability are testing aids in the same layer. Closing the layer restarts
+the room with the edits; switching only a testing aid does not restart.
+
+- The edits are a `Design` (`src/core/design.gd`): independent copies of everything in
+  `data/`. Nothing is written back to `data/`; a design that should become the shipped game
+  is carried over by hand.
+- The design is saved in `local/sandbox_design.tres` and loaded on every start, until
+  "Reset to defaults" removes it. `local/` is git-ignored and inside the project; the game's
+  own code writes nowhere else (Godot itself still keeps logs and caches in its user data
+  folder). To share a design, send that file.
+- Not in the sandbox: the rule switches, pickup contents, new kinds of enemy behaviour.
+- The fields under "Numbers" are generated from the exported properties, so a new exported
+  number shows up by itself. A new ability effect kind is one more line in `EFFECT_KINDS`
+  in `src/view/sandbox/ability_editor.gd`.
+- View smoke test: `godot --headless --path . --script res://tests/run_view_smoke.gd`.
 
 **Choices made where the document was silent**
 

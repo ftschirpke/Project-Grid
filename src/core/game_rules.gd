@@ -23,6 +23,11 @@ enum MoveIntoEnemy {
 @export_group("Abilities")
 ## The player is hit by their own abilities when standing in the area.
 @export var self_damage := false
+## Off: an ability fires on the move that completes its pattern, on any move
+## of a turn, and a pattern may start in one turn and end in the next.
+## On: abilities fire only on the last move of a turn, and a pattern no longer
+## than a turn must lie inside that turn.
+@export var abilities_only_at_turn_end := false
 ## Ability areas need a clear line from the end tile to each affected tile.
 @export var walls_block_effects := false
 @export var abilities_destroy_projectiles := false
@@ -47,6 +52,10 @@ enum MoveIntoEnemy {
 @export_group("Winning")
 @export var win_on_exit := true
 @export var win_on_all_enemies_dead := true
+
+@export_group("Testing aids")
+## The player takes no damage. Switched from the sandbox layer.
+@export var player_invulnerable := false
 
 @export_group("Step resolution")
 ## Runs top to bottom once per world step. Reorder, remove or insert phases here.

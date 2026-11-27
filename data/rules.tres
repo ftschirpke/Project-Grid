@@ -18,7 +18,6 @@ script = ExtResource("3")
 
 [sub_resource type="Resource" id="p02_trigger_abilities"]
 script = ExtResource("4")
-turn_end_only = true
 
 [sub_resource type="Resource" id="p03_remove_dead"]
 script = ExtResource("5")

@@ -9,6 +9,8 @@ var game: Game
 var previews: Array = []
 var log_lines: Array[String] = []
 var show_enemy_phase := true
+## State of the sandbox, e.g. "edited design, fog off".
+var sandbox_note := ""
 
 
 func bind(new_game: Game) -> void:
@@ -83,6 +85,7 @@ func _draw() -> void:
 		y += 18
 		DrawUtil.text(self, font, Vector2(0, y), line, 12, DrawUtil.MUTED)
 
+	DrawUtil.text(self, font, Vector2(0, size.y - 38), "Ctrl+D: sandbox (%s)" % sandbox_note, 12, DrawUtil.MUTED)
 	DrawUtil.text(self, font, Vector2(0, size.y - 22), "Arrows / WASD: move    1-3: choose    R: restart", 12, DrawUtil.MUTED)
 	DrawUtil.text(self, font, Vector2(0, size.y - 6), "P: show enemy phase (%s)" % ("on" if show_enemy_phase else "off"), 12, DrawUtil.MUTED)
 

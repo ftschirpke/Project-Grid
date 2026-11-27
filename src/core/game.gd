@@ -18,15 +18,21 @@ var _queue: Array[StepContext] = []
 var _paused_at := -1
 
 
-## `room_text` overrides the configured room file (used by tests).
-func _init(game_config: GameConfig, room_text: String = "") -> void:
+## `room_text` overrides the configured room file (used by tests). `tiles`
+## and `enemies` together override the content folders (used by the sandbox,
+## which plays its own edited copies).
+func _init(game_config: GameConfig, room_text: String = "", tiles: Array[TileDef] = [], enemies: Array[EnemyDef] = []) -> void:
 	config = game_config
-	for res in ContentLoader.load_dir(config.tiles_dir):
-		if res is TileDef:
-			tile_types.append(res)
-	for res in ContentLoader.load_dir(config.enemies_dir):
-		if res is EnemyDef:
-			enemy_types.append(res)
+	if tiles.is_empty():
+		for res in ContentLoader.load_dir(config.tiles_dir):
+			if res is TileDef:
+				tile_types.append(res)
+		for res in ContentLoader.load_dir(config.enemies_dir):
+			if res is EnemyDef:
+				enemy_types.append(res)
+	else:
+		tile_types = tiles
+		enemy_types = enemies
 	_room_text = room_text if room_text != "" else FileAccess.get_file_as_string(config.room_file)
 	restart()
 
@@ -97,8 +103,8 @@ func choose(index: int) -> bool:
 ## What moving in `dir` would do right now:
 ## { valid: bool, dir: int, target: Vector2i, ends_turn: bool,
 ##   hits: [{ ability, tiles }] }
-## Abilities only fire on the last move of a turn, so `hits` is empty on the
-## others.
+## With the rule switch `abilities_only_at_turn_end`, `hits` is empty on every
+## move but the last of a turn.
 func preview(dir: int) -> Dictionary:
 	var target := state.player.pos + Grid.vec(dir)
 	var result := {"valid": state.can_player_enter(target), "dir": dir, "target": target, "ends_turn": false, "hits": []}
@@ -107,7 +113,7 @@ func preview(dir: int) -> Dictionary:
 	var per_turn := _moves_per_turn()
 	var steps_after := state.turn_step + state.move_cost(state.player, target)
 	result.ends_turn = steps_after % per_turn == 0
-	if not result.ends_turn:
+	if config.rules.abilities_only_at_turn_end and not result.ends_turn:
 		return result
 	# A move that spills over into a later turn (slow terrain) starts that turn.
 	var turn_start := state.turn_start_index if steps_after <= per_turn else state.history.size()
@@ -116,9 +122,25 @@ func preview(dir: int) -> Dictionary:
 	for m in state.ability_matches(hypothetical, turn_start):
 		result.hits.append({
 			"ability": m.ability,
-			"tiles": state.effect_tiles(m.ability, target, m.rotation),
+			"tiles": state.effect_tiles(m.ability, target, m.rotation, null, m.mirrored),
 		})
 	return result
+
+
+## How many moves of `ability`'s pattern the player has walked so far (see
+## PatternMatcher.progress). For display only.
+func ability_progress(ability: AbilityDef) -> int:
+	var turn_start := state.turn_start_index
+	var turn_step := state.turn_step
+	# While the enemy phase is pending, the step is not counted yet.
+	if is_enemy_phase_pending():
+		if _queue[0].ends_turn:
+			turn_start = state.history.size()
+			turn_step = 0
+		else:
+			turn_step += 1
+	var turn_length := _moves_per_turn() if config.rules.abilities_only_at_turn_end else 0
+	return PatternMatcher.progress(state.history, ability, state.last_trigger.get(ability.id, -1), turn_start, turn_step, turn_length)
 
 
 ## Steps the player takes before the world reacts once.

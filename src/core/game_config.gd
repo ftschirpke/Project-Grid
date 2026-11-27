@@ -7,6 +7,8 @@ extends Resource
 @export_file("*.txt") var room_file := "res://data/rooms/room_01.txt"
 ## Every TileDef / EnemyDef resource in these folders is loaded automatically
 ## and placed in rooms through its `symbol`.
+## Every AbilityDef in this folder is listed in the sandbox's ability editor.
+@export_dir var abilities_dir := "res://data/abilities"
 @export_dir var tiles_dir := "res://data/tiles"
 @export_dir var enemies_dir := "res://data/enemies"
 ## Tile placed under the player start, under enemies and for unknown symbols.

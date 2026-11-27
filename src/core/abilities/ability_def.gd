@@ -13,6 +13,9 @@ extends Resource
 ## Allow the pattern (and its area) in all four 90 degree rotations.
 ## Patterns are never mirrored.
 @export var rotatable := true
+## Also allow the left-right mirror image of the pattern. The area flips
+## with it. Combines with `rotatable`.
+@export var mirrorable := false
 ## Affected tiles as offsets from the tile where the pattern ENDS, in the
 ## canonical orientation, written as in DESIGN.md: x to the right, y UP.
 ## "In front of the player" is the direction of the pattern's last move.
@@ -45,16 +48,18 @@ func combined_area() -> Array[Vector2i]:
 
 ## Area offsets in grid space (y down) for the given rotation. With `effect`
 ## the area of that effect, without it the combined area of all effects.
-func area_offsets(rotation: int, effect: AbilityEffect = null) -> Array[Vector2i]:
+## `mirrored` flips the area left-right before it is rotated.
+func area_offsets(rotation: int, effect: AbilityEffect = null, mirrored := false) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	for offset in (effect_area(effect) if effect != null else combined_area()):
-		out.append(Grid.rotate_offset(Grid.design_to_grid(offset), rotation))
+		var o := Vector2i(-offset.x, offset.y) if mirrored else offset
+		out.append(Grid.rotate_offset(Grid.design_to_grid(o), rotation))
 	return out
 
 
-func area_tiles(anchor: Vector2i, rotation: int, effect: AbilityEffect = null) -> Array[Vector2i]:
+func area_tiles(anchor: Vector2i, rotation: int, effect: AbilityEffect = null, mirrored := false) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
-	for offset in area_offsets(rotation, effect):
+	for offset in area_offsets(rotation, effect, mirrored):
 		out.append(anchor + offset)
 	return out
 

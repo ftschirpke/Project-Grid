@@ -29,7 +29,8 @@ func _draw_ability(ability: AbilityDef, top: float, font: Font) -> float:
 	draw_rect(Rect2(0, top + 2, 14, 14), ability.color)
 	DrawUtil.text(self, font, Vector2(22, top + 15), ability.display_name, 17)
 	DrawUtil.text(self, font, Vector2(0, top + 36), ability.describe(), 14)
-	var note := "any rotation, never mirrored" if ability.rotatable else "this direction only"
+	var note := "any rotation" if ability.rotatable else "this direction only"
+	note += ", also mirrored" if ability.mirrorable else ", never mirrored"
 	DrawUtil.text(self, font, Vector2(0, top + 53), note, 11, DrawUtil.MUTED)
 	var diagram_top := top + 64.0
 	var pattern_height := _draw_pattern(ability, Vector2(4, diagram_top))
@@ -50,12 +51,17 @@ func _draw_pattern(ability: AbilityDef, origin: Vector2) -> float:
 	var step := CELL * 1.2
 	var to_screen := func(p: Vector2i) -> Vector2:
 		return origin + Vector2(p - lo) * step + Vector2(8, 8)
+	# The moves already walked are drawn in the ability's colour.
+	var walked := game.ability_progress(ability)
 	for i in range(1, points.size()):
 		# Shorten each segment a little so consecutive arrow heads stay visible.
 		var from: Vector2 = to_screen.call(points[i - 1])
 		var to: Vector2 = to_screen.call(points[i])
-		DrawUtil.arrow(self, from.lerp(to, 0.12), from.lerp(to, 0.92), DrawUtil.INK, 2.5, 8.0)
-	draw_circle(to_screen.call(points[0]), 5.0, DrawUtil.INK)
+		if i <= walked:
+			DrawUtil.arrow(self, from.lerp(to, 0.12), from.lerp(to, 0.92), ability.color, 4.0, 9.0)
+		else:
+			DrawUtil.arrow(self, from.lerp(to, 0.12), from.lerp(to, 0.92), DrawUtil.INK, 2.5, 8.0)
+	draw_circle(to_screen.call(points[0]), 5.0, ability.color if walked > 0 else DrawUtil.INK)
 	return (hi.y - lo.y) * step + 16.0
 
 

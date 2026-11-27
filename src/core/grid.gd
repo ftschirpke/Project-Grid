@@ -20,6 +20,11 @@ static func rotate_dir(dir: int, quarter_turns: int) -> int:
 	return (dir + quarter_turns) % 4
 
 
+## Left-right mirror image of a direction: up and down stay, left and right swap.
+static func mirror_dir(dir: int) -> int:
+	return (4 - dir) % 4
+
+
 ## Rotates a grid offset clockwise (as seen on screen) in 90 degree steps.
 static func rotate_offset(offset: Vector2i, quarter_turns: int) -> Vector2i:
 	var v := offset

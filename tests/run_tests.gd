@@ -239,9 +239,28 @@ func test_spear_attacks_rotate() -> void:
 	eq(tiles, [Vector2i(4, 2)], "thrust facing down, clipped at the room edge")
 
 
-func test_turns_do_not_combine_across_the_boundary() -> void:
+func test_patterns_cross_the_turn_boundary() -> void:
 	var game := make(ROW_ROOM, NO_KILL_WIN)
 	game.state.player.pos = Vector2i(0, 1)
+	var fired := record_abilities(game)
+	moves(game, "UR")
+	eq(fired.size(), 0, "a corner fires nothing")
+	eq(game.preview(R).ends_turn, false, "the next move is the first of a turn")
+	eq(game.preview(R).hits[0].ability.id, &"spear_throw", "and the preview shows the throw")
+	eq(game.ability_progress(game.state.find_ability(&"spear_throw")), 1, "one move of the throw is walked")
+	moves(game, "R") # R, R straddles the two turns
+	eq(fired.get(3), ["Spear Throw"], "started in one turn, finished in the next")
+	eq(game.state.turn_step, 1, "mid-turn: the enemies have not acted")
+	eq(game.preview(R).hits.size(), 0, "a third step cannot reuse the throw's moves")
+	eq(game.preview(L).hits[0].ability.id, &"spear_thrust", "but another ability can share its last move")
+
+
+func test_turn_end_switch_keeps_patterns_inside_the_turn() -> void:
+	var rules := NO_KILL_WIN.duplicate()
+	rules["abilities_only_at_turn_end"] = true
+	var game := make(ROW_ROOM, rules)
+	game.state.player.pos = Vector2i(0, 1)
+	eq(game.preview(R).hits.size(), 0, "the first move of a turn previews nothing")
 	var fired := record_abilities(game)
 	moves(game, "URRD") # R, R straddles the two turns
 	eq(fired.size(), 0, "no spear throw across turns")
@@ -572,11 +591,11 @@ func test_new_ability_pickup() -> void:
 	moves(game, "R")
 	eq(fired.get(2), ["Spear Throw"], "two moves: only the spear throw")
 	moves(game, "RR")
-	eq(fired.get(4), ["Spear Throw", "Lance"], "the lance reaches back into the previous turn")
+	eq(fired.get(3), ["Lance"], "the lance completes mid-turn, across the turn boundary")
+	eq(fired.get(4), ["Spear Throw"], "the next throw, no lance self-overlap")
 	moves(game, "RR")
-	eq(fired.get(6), ["Spear Throw"], "no lance self-overlap")
-	for move in [1, 3, 5]:
-		eq(fired.get(move), null, "nothing mid-turn (move %d)" % move)
+	eq(fired.get(5), null, "nothing on move 5: both would overlap themselves")
+	eq(fired.get(6), ["Spear Throw", "Lance"], "both again on move 6")
 
 
 # --- vision ------------------------------------------------------------------
@@ -596,6 +615,269 @@ func test_enemy_out_of_range_stays_idle() -> void:
 	moves(game, "D")
 	eq(game.state.enemies[0].active, false, "idle beyond activation range")
 	eq(game.state.enemies[0].pos, Vector2i(8, 0), "did not move")
+
+
+# --- mirroring ---------------------------------------------------------------
+
+func test_mirrorable_pattern_matches_its_mirror_image() -> void:
+	var ability := AbilityDef.new()
+	ability.id = &"hook"
+	ability.pattern = [U, R] as Array[Grid.Dir]
+	ability.area = [Vector2i(1, 0)] as Array[Vector2i] # one tile further right
+	var list: Array[AbilityDef] = [ability]
+	var mirror: Array[int] = [U, L]
+	var mirror_rotated: Array[int] = [R, U] # mirror image, one quarter turn
+	eq(PatternMatcher.find_matches(mirror, list, {}).size(), 0, "not mirrored by default")
+	ability.mirrorable = true
+	var m := PatternMatcher.find_matches(mirror, list, {})
+	eq(m.size(), 1, "mirror image matches")
+	eq(m[0].mirrored, true, "flagged as mirrored")
+	eq(m[0].rotation, 0, "no rotation needed")
+	eq(ability.area_tiles(Vector2i(5, 5), 0, null, true), [Vector2i(4, 5)], "area flips to the left")
+	var as_written: Array[int] = [U, R]
+	eq(PatternMatcher.find_matches(as_written, list, {})[0].mirrored, false, "the pattern as written is not mirrored")
+	m = PatternMatcher.find_matches(mirror_rotated, list, {})
+	eq(m.size(), 1, "mirror image matches rotated")
+	eq([m[0].mirrored, m[0].rotation], [true, 1], "mirrored, one quarter turn")
+	eq(ability.area_tiles(Vector2i(5, 5), 1, null, true), [Vector2i(5, 4)], "area flips, then rotates")
+	ability.rotatable = false
+	eq(PatternMatcher.find_matches(mirror_rotated, list, {}).size(), 0, "mirroring alone does not rotate")
+	eq(PatternMatcher.find_matches(mirror, list, {}).size(), 1, "but still mirrors")
+
+
+func test_mirrored_ability_hits_the_mirrored_tiles() -> void:
+	var game := make("""
+.....
+c....
+.....
+.P...
+.....
+""", NO_KILL_WIN)
+	var hook := AbilityDef.new()
+	hook.id = &"hook"
+	hook.pattern = [U, L] as Array[Grid.Dir]
+	hook.mirrorable = true
+	hook.area = [Vector2i(0, 1)] as Array[Vector2i]
+	var damage := DamageEffect.new()
+	damage.amount = 1
+	hook.effects = [damage] as Array[AbilityEffect]
+	var list: Array[AbilityDef] = [hook]
+	game.state.abilities = list
+	# U, R is the mirror image of U, L. Canonical ends on (0,2) and hits (0,1).
+	moves(game, "U")
+	eq(game.preview(R).hits[0].tiles, [Vector2i(2, 1)], "preview of the mirrored move")
+	eq(game.preview(L).hits[0].tiles, [Vector2i(0, 1)], "preview of the move as written")
+	moves(game, "L")
+	eq(game.state.enemies[0].hp, 1, "the pattern as written hits the chaser")
+
+
+# --- pattern progress --------------------------------------------------------
+
+func test_progress_counts_the_walked_start_of_a_pattern() -> void:
+	var ability := AbilityDef.new()
+	ability.id = &"long"
+	ability.pattern = [U, U, R, R] as Array[Grid.Dir]
+	# Turns of two moves; the pattern is longer than a turn.
+	var none: Array[int] = []
+	eq(PatternMatcher.progress(none, ability, -1, 0, 0, 2), 0, "nothing walked")
+	var one: Array[int] = [L]
+	eq(PatternMatcher.progress(one, ability, -1, 0, 1, 2), 1, "any first move starts a rotatable pattern")
+	eq(PatternMatcher.progress(one, ability, -1, 1, 0, 1), 1, "also with one move per turn")
+	eq(PatternMatcher.progress(one, ability, -1, 0, 1, 3), 0, "but not if it could not end on a turn end")
+	var two: Array[int] = [L, L]
+	eq(PatternMatcher.progress(two, ability, -1, 2, 0, 2), 2, "two moves, rotated")
+	var three: Array[int] = [L, L, U]
+	eq(PatternMatcher.progress(three, ability, -1, 2, 1, 2), 3, "three moves")
+	var broken: Array[int] = [L, L, D]
+	eq(PatternMatcher.progress(broken, ability, -1, 2, 1, 2), 1, "a wrong move starts over with itself")
+	eq(PatternMatcher.progress(two, ability, 0, 2, 0, 2), 0, "moves of the previous trigger do not count")
+	var mirror: Array[int] = [U, U, L]
+	eq(PatternMatcher.progress(mirror, ability, -1, 2, 1, 2), 1, "not mirrored by default: only the last move counts")
+	ability.mirrorable = true
+	eq(PatternMatcher.progress(mirror, ability, -1, 2, 1, 2), 3, "mirror image counts when mirrorable")
+	ability.rotatable = false
+	ability.mirrorable = false
+	eq(PatternMatcher.progress(two, ability, -1, 2, 0, 2), 0, "no rotation when not rotatable")
+
+
+func test_progress_of_a_short_pattern_stays_inside_the_turn() -> void:
+	var ability := AbilityDef.new()
+	ability.id = &"short"
+	ability.pattern = [U, R] as Array[Grid.Dir]
+	var first: Array[int] = [U]
+	eq(PatternMatcher.progress(first, ability, -1, 0, 1, 2), 1, "first move of the turn")
+	var second: Array[int] = [D, U]
+	eq(PatternMatcher.progress(second, ability, -1, 2, 0, 2), 0, "last move of a turn cannot start it")
+
+
+func test_game_reports_progress_and_resets_after_the_trigger() -> void:
+	var game := make("""
+.....
+.....
+.....
+.P...
+.....
+""", NO_KILL_WIN)
+	var hook := AbilityDef.new()
+	hook.id = &"hook"
+	hook.pattern = [U, L] as Array[Grid.Dir]
+	var list: Array[AbilityDef] = [hook]
+	game.state.abilities = list
+	eq(game.ability_progress(hook), 0, "nothing yet")
+	moves(game, "U")
+	eq(game.ability_progress(hook), 1, "one move walked")
+	moves(game, "L")
+	eq(game.ability_progress(hook), 0, "starts over after firing")
+	moves(game, "R")
+	eq(game.ability_progress(hook), 1, "rotated start")
+	moves(game, "R")
+	eq(game.ability_progress(hook), 1, "the turn boundary does not reset it")
+
+	var rules := NO_KILL_WIN.duplicate()
+	rules["abilities_only_at_turn_end"] = true
+	var strict := make(OPEN_ROOM, rules)
+	strict.state.abilities = list
+	moves(strict, "U")
+	eq(strict.ability_progress(hook), 1, "turn-end rule: first move of the turn counts")
+	moves(strict, "U")
+	eq(strict.ability_progress(hook), 0, "turn-end rule: the last move of a turn cannot start it")
+
+
+# --- sandbox -----------------------------------------------------------------
+
+func test_invulnerable_player_takes_no_damage() -> void:
+	var room := """
+.c.
+.P.
+...
+"""
+	var game := make(room, {"player_moves_per_turn": 1})
+	moves(game, "D")
+	eq(game.state.player.hp, 2, "normally the chaser's strike lands")
+	game = make(room, {"player_moves_per_turn": 1, "player_invulnerable": true})
+	moves(game, "D")
+	eq(game.state.player.hp, 3, "no damage when invulnerable")
+
+
+func test_default_design_plays_like_the_shipped_game() -> void:
+	var design := Design.from_defaults(_base)
+	check(design.is_usable(), "usable")
+	eq([design.width(), design.height()], [16, 16], "room size")
+	eq(design.abilities.size(), 7, "all abilities listed")
+	var game := Game.new(design.make_config(_base), design.room_text(), design.tiles, design.enemies)
+	eq(game.state.enemies.size(), 6, "six enemies")
+	eq(game.state.player.pos, Vector2i(5, 15), "player start")
+	eq(game.state.tile_at(Vector2i(13, 0)).id, &"exit", "exit tile")
+	eq(game.state.abilities.map(func(a: AbilityDef) -> StringName: return a.id), [&"spear_throw", &"spear_thrust"], "starting abilities")
+	eq(game.config.rules.fog_enabled, true, "fog on")
+
+
+func test_design_is_independent_of_the_data_files() -> void:
+	var design := Design.from_defaults(_base)
+	var chaser := design.enemy_by_symbol("c")
+	chaser.max_health = 9
+	(chaser.behavior as ChaseBehavior).damage = 5
+	design.tile_by_symbol("^").on_end_step[0].set("amount", 4)
+	design.player.max_health = 7
+	var throw := design.player.starting_abilities[0]
+	check(design.abilities.has(throw), "starting abilities are entries of the ability list")
+	throw.pattern.append(U)
+	throw.effects[0].set("amount", 6)
+	eq((load("res://data/enemies/chaser.tres") as EnemyDef).max_health, 2, "enemy data untouched")
+	eq(((load("res://data/enemies/chaser.tres") as EnemyDef).behavior as ChaseBehavior).damage, 1, "behaviour data untouched")
+	eq((load("res://data/tiles/hazard.tres") as TileDef).on_end_step[0].get("amount"), 1, "tile data untouched")
+	eq(_base.player.max_health, 3, "player data untouched")
+	var data_throw := load("res://data/abilities/spear_throw.tres") as AbilityDef
+	eq(data_throw.pattern.size(), 2, "ability pattern untouched")
+	eq(data_throw.effects[0].get("amount"), 1, "ability effect untouched")
+	var game := Game.new(design.make_config(_base), design.room_text(), design.tiles, design.enemies)
+	eq(game.state.player.max_hp, 7, "the game plays the edited player")
+	eq(game.state.enemies.filter(func(e: Unit) -> bool: return e.def.id == &"chaser")[0].max_hp, 9, "and the edited chaser")
+	eq(game.state.abilities[0].pattern.size(), 3, "and the edited ability")
+
+
+func test_design_room_editing() -> void:
+	var design := Design.from_defaults(_base)
+	design.set_room_text("...\n.P.\n...")
+	eq(design.set_cell(Vector2i(0, 0), "#"), true, "paint a wall")
+	eq(design.set_cell(Vector2i(0, 0), "#"), false, "painting the same again changes nothing")
+	eq(design.set_cell(Vector2i(2, 2), "c"), true, "place a chaser")
+	eq(design.set_cell(Vector2i(1, 1), "#"), false, "the player start cannot be painted over")
+	eq(design.set_cell(Vector2i(2, 0), "P"), true, "move the player start")
+	eq(Array(design.rows), ["#.P", "...", "..c"], "one player start, old one is floor")
+	design.resize(5, 4)
+	eq(Array(design.rows), ["#.P..", ".....", "..c..", "....."], "grows with floor")
+	design.resize(1, 1)
+	eq([design.width(), design.height()], [Design.MIN_SIZE, Design.MIN_SIZE], "size is clamped")
+	design.resize(5, 5)
+	design.set_cell(Vector2i(4, 4), "P")
+	design.resize(3, 3)
+	eq(design.player_pos(), Vector2i(2, 2), "a cut-off player start moves inside")
+	var game := Game.new(design.make_config(_base), design.room_text(), design.tiles, design.enemies)
+	eq([game.state.width, game.state.height], [3, 3], "the game plays the edited room")
+	eq(game.state.player.pos, Vector2i(2, 2), "from the edited start")
+
+
+func test_design_ability_list() -> void:
+	var design := Design.from_defaults(_base)
+	var lance: AbilityDef
+	for a in design.abilities:
+		if a.id == &"lance":
+			lance = a
+	design.set_starting(lance, true)
+	eq(design.player.starting_abilities.map(func(a: AbilityDef) -> StringName: return a.id), [&"lance", &"spear_throw", &"spear_thrust"], "starting abilities keep list order")
+	var fresh := AbilityDef.new()
+	fresh.id = design.free_ability_id()
+	eq(fresh.id, &"custom_1", "first free id")
+	design.add_ability(fresh)
+	eq(design.free_ability_id(), &"custom_2", "next free id")
+	check(design.is_starting(fresh), "a new ability is a starting ability")
+	design.remove_ability(fresh)
+	check(not design.abilities.has(fresh) and not design.is_starting(fresh), "removed everywhere")
+
+
+func test_design_testing_aids() -> void:
+	var design := Design.from_defaults(_base)
+	design.fog_off = true
+	design.invulnerable = true
+	var config := design.make_config(_base)
+	eq([config.rules.fog_enabled, config.rules.player_invulnerable], [false, true], "switches set")
+	eq([_base.rules.fog_enabled, _base.rules.player_invulnerable], [true, false], "shipped rules untouched")
+
+
+func test_design_survives_saving_and_loading() -> void:
+	var path := "res://local/_test_design.tres"
+	var design := Design.from_defaults(_base)
+	design.set_cell(Vector2i(0, 15), "#")
+	design.enemy_by_symbol("B").max_health = 11
+	design.abilities[0].mirrorable = true
+	design.invulnerable = true
+	var added := AbilityDef.new()
+	added.id = design.free_ability_id()
+	added.pattern = [U, L, U] as Array[Grid.Dir]
+	added.area = [Vector2i(0, 1)] as Array[Vector2i]
+	var stun := StunEffect.new()
+	stun.turns = 3
+	stun.area = [Vector2i(1, 1)] as Array[Vector2i]
+	added.effects = [stun] as Array[AbilityEffect]
+	design.add_ability(added)
+	eq(design.save(path), OK, "saved")
+	var loaded := Design.load_saved(path)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	check(loaded != null, "loaded")
+	if loaded == null:
+		return
+	eq(Array(loaded.rows), Array(design.rows), "room")
+	eq(loaded.enemy_by_symbol("B").max_health, 11, "enemy tuning")
+	eq(loaded.abilities[0].mirrorable, true, "ability flag")
+	eq(loaded.invulnerable, true, "testing aid")
+	eq(loaded.abilities.size(), 8, "added ability kept")
+	var again := loaded.abilities[7]
+	eq([again.id, Array(again.pattern)], [&"custom_1", [U, L, U]], "its id and pattern")
+	eq([(again.effects[0] as StunEffect).turns, again.effects[0].area], [3, [Vector2i(1, 1)]], "its effect with its own area")
+	check(loaded.abilities.has(loaded.player.starting_abilities[0]), "starting abilities are still entries of the list")
+	eq(loaded.player.starting_abilities.size(), 3, "three starting abilities")
+	eq(Design.load_saved("res://local/_missing.tres"), null, "no file, no design")
 
 
 # --- shipped content ---------------------------------------------------------
